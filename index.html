@@ -1,1379 +1,1554 @@
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<meta name="theme-color" content="#020617" />
-<title>VirtuaLab Pro — Virtual Chemistry Workbench</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VirtuaLab Pro — Thermodynamics &amp; Reactivity Simulator</title>
+<meta name="description" content="A scientifically accurate single-page virtual chemistry laboratory with 150+ reagents, real-time thermodynamics, and procedural audio.">
 
-<!-- Tailwind CSS CDN -->
+<!-- ==========================================================================
+     TAILWIND (CDN — utility layer only; all component styling lives in <style>)
+     ======================================================================= -->
 <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- Tailwind Configuration -->
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        fontFamily: {
-          sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
-          mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'Liberation Mono', 'monospace']
-        },
-        colors: {
-          lab: {
-            bg: '#020617',
-            panel: '#0f172a',
-            line: '#1e293b'
-          }
-        },
-        keyframes: {
-          shake: {
-            '0%, 100%': { transform: 'translate(0,0) rotate(0deg)' },
-            '10%': { transform: 'translate(-14px,8px) rotate(-0.8deg)' },
-            '25%': { transform: 'translate(12px,-9px) rotate(0.9deg)' },
-            '45%': { transform: 'translate(-9px,6px) rotate(-0.6deg)' },
-            '65%': { transform: 'translate(7px,-5px) rotate(0.4deg)' },
-            '85%': { transform: 'translate(-4px,3px) rotate(-0.2deg)' }
-          },
-          pulseHazard: {
-            '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0 rgba(239,68,68,0.75)' },
-            '50%': { opacity: '0.92', boxShadow: '0 0 0 22px rgba(239,68,68,0)' }
-          },
-          flowUp: {
-            '0%': { transform: 'translateY(0)', opacity: '0.85' },
-            '100%': { transform: 'translateY(-42px)', opacity: '0' }
-          },
-          bannerSlide: {
-            '0%': { transform: 'translateY(10px)', opacity: '0' },
-            '100%': { transform: 'translateY(0)', opacity: '1' }
-          }
-        },
-        animation: {
-          shake: 'shake 0.72s cubic-bezier(.36,.07,.19,.97) both',
-          pulseHazard: 'pulseHazard 1.4s ease-in-out infinite',
-          flowUp: 'flowUp 2.6s linear infinite',
-          bannerSlide: 'bannerSlide 0.28s ease-out both'
-        }
-      }
-    }
-  };
-</script>
-
-<!-- Google Fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-
 <style>
-  /* ==========================================================================
-     GLOBAL RESET & BASE
-     ========================================================================== */
-  html, body {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background-color: #020617;
-  }
+/* ==========================================================================
+   VirtuaLab Pro — Design System
+   --------------------------------------------------------------------------
+   Dark laboratory theme. Component classes are prefixed `vl-` so they never
+   collide with Tailwind utilities used inside the markup.
+   ========================================================================*/
 
-  body {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-  }
+:root {
+  --vl-bg-0:        #020617;
+  --vl-bg-1:        #0b1220;
+  --vl-bg-2:        #111c2e;
+  --vl-bg-3:        #16233a;
+  --vl-line:        #1e3350;
+  --vl-line-soft:   #16263f;
 
-  * {
-    box-sizing: border-box;
-  }
+  --vl-text-0:      #eaf3ff;
+  --vl-text-1:      #a9c4e0;
+  --vl-text-2:      #6d8aab;
 
-  /* Prevent iOS text size adjustments */
-  html {
-    -webkit-text-size-adjust: 100%;
-  }
+  --vl-accent:      #38bdf8;
+  --vl-accent-dim:  #0ea5e9;
+  --vl-cyan:        #22d3ee;
+  --vl-green:       #4ade80;
+  --vl-amber:       #fbbf24;
+  --vl-orange:      #fb923c;
+  --vl-red:         #f87171;
+  --vl-violet:      #a78bfa;
+  --vl-pink:        #f472b6;
 
-  /* ==========================================================================
-     CUSTOM SCROLLBAR STYLING
-     ========================================================================== */
-  .custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: #334155 #0f172a;
-  }
+  --vl-radius:      10px;
+  --vl-radius-lg:   14px;
 
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
-  }
+  --vl-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --vl-sans: 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
 
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: #0f172a;
-    border-radius: 10px;
-  }
+* { box-sizing: border-box; }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
-    border-radius: 10px;
-    border: 2px solid #0f172a;
-    transition: background 0.2s ease;
-  }
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--vl-bg-0);
+  color: var(--vl-text-0);
+  font-family: var(--vl-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #475569 0%, #334155 100%);
-  }
+/* --------------------------------------------------------------------------
+   Scrollbars
+   ----------------------------------------------------------------------- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--vl-bg-1); }
+::-webkit-scrollbar-thumb {
+  background: #24405f;
+  border-radius: 6px;
+  border: 2px solid var(--vl-bg-1);
+}
+::-webkit-scrollbar-thumb:hover { background: #33567e; }
+* { scrollbar-width: thin; scrollbar-color: #24405f var(--vl-bg-1); }
 
-  .custom-scrollbar::-webkit-scrollbar-corner {
-    background: #0f172a;
-  }
+/* --------------------------------------------------------------------------
+   Layout primitives
+   ----------------------------------------------------------------------- */
+.vl-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  height: 100%;
+}
 
-  /* ==========================================================================
-     SCREEN SHAKE (triggered by hazard allow-execute)
-     ========================================================================== */
-  .screen-shake {
-    animation: shake 0.72s cubic-bezier(.36,.07,.19,.97) both;
-  }
+.vl-panel {
+  background: linear-gradient(180deg, var(--vl-bg-2) 0%, var(--vl-bg-1) 100%);
+  border: 1px solid var(--vl-line-soft);
+  border-radius: var(--vl-radius-lg);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.03) inset,
+    0 8px 26px -14px rgba(0,0,0,0.85);
+}
 
-  /* ==========================================================================
-     RANGE SLIDER STYLING
-     ========================================================================== */
-  input[type="range"].lab-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 6px;
-    border-radius: 9999px;
-    background: linear-gradient(90deg, #1e293b 0%, #334155 100%);
-    outline: none;
-    cursor: pointer;
-    transition: background 0.2s ease;
-  }
+.vl-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--vl-line-soft);
+  flex-shrink: 0;
+}
 
-  input[type="range"].lab-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: linear-gradient(145deg, #60a5fa 0%, #4f46e5 100%);
-    border: 2px solid #0f172a;
-    box-shadow: 0 0 10px rgba(79, 70, 229, 0.75), 0 2px 4px rgba(0,0,0,0.5);
-    cursor: pointer;
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
-  }
+.vl-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vl-text-2);
+}
 
-  input[type="range"].lab-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.15);
-    box-shadow: 0 0 16px rgba(99, 102, 241, 0.95), 0 2px 6px rgba(0,0,0,0.6);
-  }
+.vl-panel-title .vl-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--vl-accent);
+  box-shadow: 0 0 8px var(--vl-accent);
+}
 
-  input[type="range"].lab-slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: linear-gradient(145deg, #60a5fa 0%, #4f46e5 100%);
-    border: 2px solid #0f172a;
-    box-shadow: 0 0 10px rgba(79, 70, 229, 0.75);
-    cursor: pointer;
-  }
+.vl-panel-body { padding: 12px 13px; min-height: 0; }
 
-  input[type="range"].lab-slider::-moz-range-track {
-    height: 6px;
-    border-radius: 9999px;
-    background: linear-gradient(90deg, #1e293b 0%, #334155 100%);
-  }
+/* --------------------------------------------------------------------------
+   Brand header
+   ----------------------------------------------------------------------- */
+.vl-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: var(--vl-radius-lg);
+  background: linear-gradient(120deg, rgba(56,189,248,0.12), rgba(167,139,250,0.08));
+  border: 1px solid rgba(56,189,248,0.22);
+  flex-shrink: 0;
+}
 
-  /* pH slider rainbow track variant */
-  input[type="range"].ph-slider {
-    background: linear-gradient(90deg,
-      #ef4444 0%,
-      #f97316 18%,
-      #eab308 36%,
-      #22c55e 50%,
-      #06b6d4 64%,
-      #3b82f6 80%,
-      #8b5cf6 100%);
-  }
+.vl-brand-mark {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  background: linear-gradient(145deg, #0ea5e9, #7c3aed);
+  box-shadow: 0 0 18px -4px rgba(56,189,248,0.7);
+}
 
-  input[type="range"].flame-slider::-webkit-slider-thumb {
-    background: linear-gradient(145deg, #fbbf24 0%, #ea580c 100%);
-    box-shadow: 0 0 12px rgba(234, 88, 12, 0.85), 0 2px 4px rgba(0,0,0,0.5);
-  }
-  input[type="range"].flame-slider::-moz-range-thumb {
-    background: linear-gradient(145deg, #fbbf24 0%, #ea580c 100%);
-    box-shadow: 0 0 12px rgba(234, 88, 12, 0.85);
-  }
+.vl-brand-text { line-height: 1.1; }
+.vl-brand-text h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+.vl-brand-text p {
+  margin: 2px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vl-text-2);
+}
 
-  input[type="range"].stirrer-slider::-webkit-slider-thumb {
-    background: linear-gradient(145deg, #34d399 0%, #059669 100%);
-    box-shadow: 0 0 12px rgba(5, 150, 105, 0.85), 0 2px 4px rgba(0,0,0,0.5);
-  }
-  input[type="range"].stirrer-slider::-moz-range-thumb {
-    background: linear-gradient(145deg, #34d399 0%, #059669 100%);
-    box-shadow: 0 0 12px rgba(5, 150, 105, 0.85);
-  }
+.vl-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--vl-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--vl-green);
+}
 
-  input[type="range"].drip-slider::-webkit-slider-thumb {
-    background: linear-gradient(145deg, #38bdf8 0%, #0284c7 100%);
-    box-shadow: 0 0 12px rgba(2, 132, 199, 0.85), 0 2px 4px rgba(0,0,0,0.5);
-  }
-  input[type="range"].drip-slider::-moz-range-thumb {
-    background: linear-gradient(145deg, #38bdf8 0%, #0284c7 100%);
-    box-shadow: 0 0 12px rgba(2, 132, 199, 0.85);
-  }
+.vl-status .vl-led {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--vl-green);
+  box-shadow: 0 0 8px var(--vl-green);
+  animation: vlPulse 2.2s ease-in-out infinite;
+}
 
-  /* ==========================================================================
-     MODAL OVERLAY HELPERS
-     ========================================================================== */
-  .modal-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 50;
-  }
+@keyframes vlPulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.82); }
+}
 
-  .modal-overlay.hidden {
-    display: none !important;
-  }
+/* --------------------------------------------------------------------------
+   Formula banner
+   ----------------------------------------------------------------------- */
+#formulaBanner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 11px 14px;
+  border-radius: var(--vl-radius-lg);
+  border: 1px solid var(--vl-line);
+  background: linear-gradient(180deg, var(--vl-bg-2), var(--vl-bg-1));
+  font-family: var(--vl-mono);
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 48px;
+  flex-shrink: 0;
+  transition: border-color .25s ease, background .25s ease, box-shadow .25s ease;
+  overflow: hidden;
+}
 
-  .modal-overlay.visible {
-    display: flex !important;
-  }
+#formulaBanner::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--vl-text-2);
+  transition: background .25s ease;
+}
 
-  /* ==========================================================================
-     LOG TERMINAL LINE STYLES
-     ========================================================================== */
-  #logTerminal .log-line {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.35rem;
-    padding: 2px 0;
-    border-bottom: 1px solid rgba(30, 41, 59, 0.55);
-    line-height: 1.45;
-    word-break: break-word;
-    animation: bannerSlide 0.22s ease-out both;
-  }
+.vl-banner-text { color: var(--vl-text-0); font-weight: 600; }
 
-  #logTerminal .log-ts {
-    color: #64748b;
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-  }
+.vl-banner-tags {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
 
-  #logTerminal .log-tag {
-    font-weight: 700;
-    flex-shrink: 0;
-    letter-spacing: 0.02em;
-  }
+.vl-banner-idle::before     { background: var(--vl-text-2); }
+.vl-banner-info::before     { background: var(--vl-accent); }
+.vl-banner-info             { border-color: rgba(56,189,248,0.35); }
+.vl-banner-reaction::before { background: var(--vl-cyan); }
+.vl-banner-reaction         { border-color: rgba(34,211,238,0.4); background: linear-gradient(180deg, rgba(34,211,238,0.09), var(--vl-bg-1)); }
+.vl-banner-exo::before      { background: var(--vl-orange); }
+.vl-banner-exo              { border-color: rgba(251,146,60,0.45); background: linear-gradient(180deg, rgba(251,146,60,0.12), var(--vl-bg-1)); }
+.vl-banner-endo::before     { background: var(--vl-accent); }
+.vl-banner-endo             { border-color: rgba(56,189,248,0.45); background: linear-gradient(180deg, rgba(56,189,248,0.12), var(--vl-bg-1)); }
+.vl-banner-toxic::before    { background: var(--vl-amber); }
+.vl-banner-toxic            { border-color: rgba(251,191,36,0.5);  background: linear-gradient(180deg, rgba(251,191,36,0.13), var(--vl-bg-1)); }
+.vl-banner-danger::before   { background: var(--vl-red); }
+.vl-banner-danger           { border-color: rgba(248,113,113,0.55); background: linear-gradient(180deg, rgba(248,113,113,0.15), var(--vl-bg-1)); }
 
-  #logTerminal .log-msg {
-    color: #cbd5e1;
-  }
+.vl-banner-pulse { animation: vlBannerPulse .6s ease-out 1; }
+@keyframes vlBannerPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(56,189,248,0.5); }
+  100% { box-shadow: 0 0 0 14px rgba(56,189,248,0); }
+}
 
-  #logTerminal .log-info .log-tag { color: #38bdf8; }
-  #logTerminal .log-reaction .log-tag { color: #a78bfa; }
-  #logTerminal .log-exo .log-tag { color: #fb923c; }
-  #logTerminal .log-hazard .log-tag { color: #ef4444; }
-  #logTerminal .log-warn .log-tag { color: #fbbf24; }
-  #logTerminal .log-success .log-tag { color: #34d399; }
-  #logTerminal .log-system .log-tag { color: #94a3b8; }
+/* Tags inside the banner */
+.vl-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2.5px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.vl-tag-exo      { background: rgba(251,146,60,0.16); color: #fdba74; border-color: rgba(251,146,60,0.4); }
+.vl-tag-endo     { background: rgba(56,189,248,0.16); color: #7dd3fc; border-color: rgba(56,189,248,0.4); }
+.vl-tag-neutral  { background: rgba(148,163,184,0.16); color: #cbd5e1; border-color: rgba(148,163,184,0.35); }
+.vl-tag-dh       { background: rgba(167,139,250,0.15); color: #c4b5fd; border-color: rgba(167,139,250,0.38); }
+.vl-tag-gas      { background: rgba(34,211,238,0.14); color: #67e8f9; border-color: rgba(34,211,238,0.36); }
+.vl-tag-precip   { background: rgba(74,222,128,0.14); color: #86efac; border-color: rgba(74,222,128,0.36); }
+.vl-tag-toxic    { background: rgba(251,191,36,0.18); color: #fcd34d; border-color: rgba(251,191,36,0.45); }
+.vl-tag-danger   { background: rgba(248,113,113,0.2); color: #fca5a5; border-color: rgba(248,113,113,0.5); animation: vlPulse 1s ease-in-out infinite; }
 
-  #logTerminal .log-hazard {
-    background: rgba(239, 68, 68, 0.07);
-    border-left: 3px solid #ef4444;
-    padding-left: 6px;
-  }
-  #logTerminal .log-exo {
-    background: rgba(251, 146, 60, 0.05);
-    border-left: 3px solid #fb923c;
-    padding-left: 6px;
-  }
+/* --------------------------------------------------------------------------
+   Canvas workbench
+   ----------------------------------------------------------------------- */
+.vl-workbench {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: var(--vl-radius-lg);
+  border: 1px solid var(--vl-line-soft);
+  background: radial-gradient(ellipse at 50% 30%, #0d1a2b 0%, #050b13 75%);
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.03) inset,
+    0 20px 46px -26px rgba(0,0,0,0.95);
+}
 
-  /* ==========================================================================
-     CATEGORY TAB STYLES
-     ========================================================================== */
-  .category-tab {
-    white-space: nowrap;
-    flex-shrink: 0;
-    transition: all 0.15s ease;
-  }
+#labCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
 
-  .category-tab.active {
-    background: linear-gradient(135deg, #4f46e5 0%, #2563eb 100%);
-    color: #ffffff;
-    border-color: #6366f1;
-    box-shadow: 0 0 14px rgba(99, 102, 241, 0.55);
-  }
+.vl-workbench-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--vl-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vl-text-2);
+  background: rgba(2,6,23,0.72);
+  border: 1px solid var(--vl-line);
+  pointer-events: none;
+}
 
-  /* ==========================================================================
-     pH METER BAR
-     ========================================================================== */
-  #phMeterBar .ph-fill {
-    transition: width 0.35s ease, background 0.35s ease, box-shadow 0.35s ease;
-  }
+/* --------------------------------------------------------------------------
+   Buttons
+   ----------------------------------------------------------------------- */
+.vl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: var(--vl-radius);
+  border: 1px solid var(--vl-line);
+  background: linear-gradient(180deg, var(--vl-bg-3), var(--vl-bg-2));
+  color: var(--vl-text-0);
+  font-family: var(--vl-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background .16s ease, border-color .16s ease,
+              transform .1s ease, box-shadow .16s ease, color .16s ease;
+}
+.vl-btn:hover {
+  background: linear-gradient(180deg, #1d2f4b, #16233a);
+  border-color: #2c4a6e;
+}
+.vl-btn:active { transform: translateY(1px) scale(0.985); }
+.vl-btn:focus-visible {
+  outline: 2px solid var(--vl-accent);
+  outline-offset: 2px;
+}
+.vl-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
 
-  /* ==========================================================================
-     HAZARD MODAL PULSE
-     ========================================================================== */
-  .hazard-panel {
-    animation: pulseHazard 1.6s ease-in-out infinite;
-  }
+.vl-btn .vl-btn-icon { font-size: 13px; line-height: 1; }
 
-  .hazard-stripes {
-    background-image: repeating-linear-gradient(
-      45deg,
-      #facc15 0px,
-      #facc15 18px,
-      #0f172a 18px,
-      #0f172a 36px
-    );
-  }
+.vl-btn-primary {
+  background: linear-gradient(180deg, #0ea5e9, #0284c7);
+  border-color: #0ea5e9;
+  color: #03141f;
+  font-weight: 800;
+  box-shadow: 0 0 20px -8px rgba(14,165,233,0.9);
+}
+.vl-btn-primary:hover {
+  background: linear-gradient(180deg, #38bdf8, #0ea5e9);
+  border-color: #38bdf8;
+  color: #03141f;
+}
 
-  /* ==========================================================================
-     STATE BANNER TONES
-     ========================================================================== */
-  #stateBanner[data-tone="exo"] {
-    color: #fb923c;
-    text-shadow: 0 0 12px rgba(251, 146, 60, 0.55);
-  }
-  #stateBanner[data-tone="hazard"] {
-    color: #ef4444;
-    text-shadow: 0 0 12px rgba(239, 68, 68, 0.65);
-  }
-  #stateBanner[data-tone="neutral"] {
-    color: #38bdf8;
-  }
+.vl-btn-danger {
+  background: linear-gradient(180deg, #b91c1c, #7f1d1d);
+  border-color: #dc2626;
+  color: #ffe9e9;
+}
+.vl-btn-danger:hover {
+  background: linear-gradient(180deg, #dc2626, #991b1b);
+  border-color: #ef4444;
+}
 
-  /* ==========================================================================
-     SPECIES TAGS
-     ========================================================================== */
-  .species-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 1px 7px;
-    border-radius: 9999px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    border: 1px solid transparent;
-  }
-  .species-tag.aq { background: rgba(56, 189, 248, 0.14); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); }
-  .species-tag.s  { background: rgba(148, 163, 184, 0.14); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.4); }
-  .species-tag.l  { background: rgba(52, 211, 153, 0.14); color: #34d399; border-color: rgba(52, 211, 153, 0.4); }
-  .species-tag.g  { background: rgba(251, 191, 36, 0.14); color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); }
+.vl-btn-ghost {
+  background: transparent;
+  border-color: var(--vl-line);
+  color: var(--vl-text-1);
+}
+.vl-btn-ghost:hover {
+  background: rgba(56,189,248,0.08);
+  border-color: rgba(56,189,248,0.4);
+  color: var(--vl-text-0);
+}
 
-  /* ==========================================================================
-     AI TUTOR DRAWER SLIDE
-     ========================================================================== */
-  #aiTutorDrawer {
-    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease;
-    transform: translateX(105%);
-    opacity: 0;
-    pointer-events: none;
-  }
-  #aiTutorDrawer.open {
-    transform: translateX(0);
-    opacity: 1;
-    pointer-events: auto;
-  }
-  #aiTutorDrawer.closed {
-    transform: translateX(105%);
-    opacity: 0;
-    pointer-events: none;
-  }
+.vl-btn-sm { padding: 6px 10px; font-size: 11px; }
 
-  /* ==========================================================================
-     UTILITY
-     ========================================================================== */
-  .no-select {
-    -webkit-user-select: none;
-    user-select: none;
-  }
+/* --------------------------------------------------------------------------
+   Action bar
+   ----------------------------------------------------------------------- */
+.vl-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
 
-  canvas#labCanvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-    touch-action: none;
-  }
+.vl-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--vl-line-soft);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
 
-  /* Telemetry metric value pulse on update */
-  .metric-value {
-    transition: color 0.3s ease, text-shadow 0.3s ease;
-    font-variant-numeric: tabular-nums;
-  }
+/* --------------------------------------------------------------------------
+   Inputs
+   ----------------------------------------------------------------------- */
+.vl-input,
+.vl-select {
+  padding: 7px 11px;
+  border-radius: var(--vl-radius);
+  border: 1px solid var(--vl-line);
+  background: #0b1524;
+  color: var(--vl-text-0);
+  font-family: var(--vl-mono);
+  font-size: 12px;
+  line-height: 1.3;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+  min-width: 0;
+}
+.vl-input::placeholder { color: var(--vl-text-2); }
+.vl-input:focus,
+.vl-select:focus {
+  outline: none;
+  border-color: var(--vl-accent);
+  box-shadow: 0 0 0 3px rgba(56,189,248,0.16);
+  background: #0d1a2b;
+}
+.vl-select { cursor: pointer; padding-right: 26px; }
+.vl-select option { background: #0b1524; color: var(--vl-text-0); }
 
-  #enthalpy[data-sign="negative"] { color: #fb923c; text-shadow: 0 0 10px rgba(251, 146, 60, 0.35); }
-  #enthalpy[data-sign="positive"] { color: #38bdf8; text-shadow: 0 0 10px rgba(56, 189, 248, 0.35); }
+/* number input spinner tone-down */
+.vl-input[type="number"] { -moz-appearance: textfield; }
+.vl-input[type="number"]::-webkit-outer-spin-button,
+.vl-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+
+.vl-input-water { width: 74px; text-align: right; }
+
+/* --------------------------------------------------------------------------
+   Sliders
+   ----------------------------------------------------------------------- */
+.vl-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 0;
+}
+.vl-slider-row + .vl-slider-row { border-top: 1px solid var(--vl-line-soft); }
+
+.vl-slider-label {
+  flex: 0 0 74px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vl-text-2);
+}
+
+.vl-slider-value {
+  flex: 0 0 46px;
+  text-align: right;
+  font-family: var(--vl-mono);
+  font-size: 11px;
+  color: var(--vl-accent);
+  font-weight: 600;
+}
+
+.vl-range {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--vl-accent-dim), #1e3350);
+  outline: none;
+  cursor: pointer;
+  min-width: 0;
+}
+.vl-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #ffffff, var(--vl-accent) 62%);
+  border: 2px solid #0b1524;
+  box-shadow: 0 0 12px -2px rgba(56,189,248,0.95);
+  cursor: grab;
+  transition: transform .12s ease;
+}
+.vl-range::-webkit-slider-thumb:active { transform: scale(1.16); cursor: grabbing; }
+.vl-range::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #ffffff, var(--vl-accent) 62%);
+  border: 2px solid #0b1524;
+  box-shadow: 0 0 12px -2px rgba(56,189,248,0.95);
+  cursor: grab;
+}
+.vl-range::-moz-range-track {
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--vl-accent-dim), #1e3350);
+}
+
+.vl-range-flame::-webkit-slider-thumb {
+  background: radial-gradient(circle at 32% 30%, #fff7d6, #fb923c 62%);
+  box-shadow: 0 0 12px -2px rgba(251,146,60,0.95);
+}
+.vl-range-flame::-moz-range-thumb {
+  background: radial-gradient(circle at 32% 30%, #fff7d6, #fb923c 62%);
+}
+.vl-range-flame { background: linear-gradient(90deg, #fb923c, #1e3350); }
+.vl-range-flame::-moz-range-track { background: linear-gradient(90deg, #fb923c, #1e3350); }
+
+.vl-range-titrate::-webkit-slider-thumb {
+  background: radial-gradient(circle at 32% 30%, #e9d5ff, #a78bfa 62%);
+  box-shadow: 0 0 12px -2px rgba(167,139,250,0.95);
+}
+.vl-range-titrate::-moz-range-thumb {
+  background: radial-gradient(circle at 32% 30%, #e9d5ff, #a78bfa 62%);
+}
+.vl-range-titrate { background: linear-gradient(90deg, #a78bfa, #1e3350); }
+.vl-range-titrate::-moz-range-track { background: linear-gradient(90deg, #a78bfa, #1e3350); }
+
+/* --------------------------------------------------------------------------
+   Telemetry grid
+   ----------------------------------------------------------------------- */
+.vl-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.vl-metric {
+  padding: 8px 9px;
+  border-radius: var(--vl-radius);
+  background: rgba(11,21,36,0.72);
+  border: 1px solid var(--vl-line-soft);
+  min-width: 0;
+  transition: border-color .2s ease, background .2s ease;
+}
+.vl-metric:hover {
+  border-color: rgba(56,189,248,0.32);
+  background: rgba(14,26,44,0.9);
+}
+
+.vl-metric-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--vl-text-2);
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vl-metric-value {
+  display: block;
+  font-family: var(--vl-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vl-text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color .2s ease;
+}
+
+.vl-metric-wide { grid-column: span 3; }
+
+/* --------------------------------------------------------------------------
+   Solution swatch
+   ----------------------------------------------------------------------- */
+.vl-swatch-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: var(--vl-radius);
+  background: rgba(11,21,36,0.72);
+  border: 1px solid var(--vl-line-soft);
+}
+
+#solutionSwatch {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  border: 2px solid var(--vl-line);
+  background: #cfe8ff;
+  box-shadow: 0 0 16px -5px rgba(56,189,248,0.7);
+  flex-shrink: 0;
+  transition: background .35s ease;
+}
+
+.vl-swatch-meta { min-width: 0; }
+.vl-swatch-meta strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--vl-text-0);
+}
+.vl-swatch-meta span {
+  display: block;
+  font-family: var(--vl-mono);
+  font-size: 10px;
+  color: var(--vl-text-2);
+}
+
+/* --------------------------------------------------------------------------
+   Log terminal
+   ----------------------------------------------------------------------- */
+#logTerminal {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 9px 11px;
+  font-family: var(--vl-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  background: #040a13;
+  border-radius: 0 0 var(--vl-radius-lg) var(--vl-radius-lg);
+}
+
+.vl-log-line {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(30,51,80,0.32);
+  animation: vlLogIn .22s ease-out;
+}
+.vl-log-line:last-child { border-bottom: none; }
+
+@keyframes vlLogIn {
+  from { opacity: 0; transform: translateX(-5px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.vl-log-time {
+  flex: 0 0 auto;
+  color: #3f5f80;
+  font-size: 10px;
+  padding-top: 1px;
+}
+
+.vl-log-msg { flex: 1 1 auto; word-break: break-word; }
+
+.vl-log-info     .vl-log-msg { color: #93b4d4; }
+.vl-log-add      .vl-log-msg { color: #7dd3fc; }
+.vl-log-reaction .vl-log-msg { color: #67e8f9; }
+.vl-log-action   .vl-log-msg { color: #86efac; }
+.vl-log-system   .vl-log-msg { color: #c4b5fd; }
+.vl-log-event    .vl-log-msg { color: #a9c4e0; }
+.vl-log-warn     .vl-log-msg { color: #fcd34d; }
+.vl-log-error    .vl-log-msg { color: #fca5a5; font-weight: 600; }
+.vl-log-danger   .vl-log-msg { color: #fca5a5; font-weight: 600; }
+
+.vl-log-info::before,
+.vl-log-add::before,
+.vl-log-reaction::before,
+.vl-log-action::before,
+.vl-log-system::before,
+.vl-log-event::before,
+.vl-log-warn::before,
+.vl-log-error::before,
+.vl-log-danger::before {
+  content: "›";
+  flex: 0 0 auto;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.vl-log-info::before     { color: #3f5f80; }
+.vl-log-add::before      { color: #38bdf8; }
+.vl-log-reaction::before { color: #22d3ee; }
+.vl-log-action::before   { color: #4ade80; }
+.vl-log-system::before   { color: #a78bfa; }
+.vl-log-event::before    { color: #6d8aab; }
+.vl-log-warn::before     { color: #fbbf24; }
+.vl-log-error::before,
+.vl-log-danger::before   { color: #f87171; }
+
+/* --------------------------------------------------------------------------
+   Reagent modal — slide-over the RIGHT panel
+   ----------------------------------------------------------------------- */
+#reagentModal {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--vl-radius-lg);
+  overflow: hidden;
+  background: linear-gradient(180deg, #0c1727 0%, #070f1c 100%);
+  border: 1px solid rgba(56,189,248,0.28);
+  box-shadow:
+    -18px 0 54px -20px rgba(0,0,0,0.95),
+    0 0 0 1px rgba(56,189,248,0.06) inset;
+  animation: vlSlideOver .3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Tailwind's .hidden must win over the #id display rule above */
+#reagentModal.hidden { display: none; }
+
+@keyframes vlSlideOver {
+  from { opacity: 0; transform: translateX(26px) scale(0.985); }
+  to   { opacity: 1; transform: translateX(0)    scale(1); }
+}
+
+.vl-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vl-line-soft);
+  background: linear-gradient(180deg, rgba(56,189,248,0.09), transparent);
+  flex-shrink: 0;
+}
+
+.vl-modal-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--vl-text-0);
+}
+.vl-modal-head p {
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--vl-text-2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vl-modal-close {
+  margin-left: auto;
+  width: 30px; height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--vl-line);
+  background: rgba(11,21,36,0.8);
+  color: var(--vl-text-1);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+.vl-modal-close:hover {
+  background: rgba(248,113,113,0.18);
+  border-color: rgba(248,113,113,0.5);
+  color: #fca5a5;
+}
+
+.vl-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 13px 13px;
+}
+
+.vl-modal-tools {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.vl-modal-tools .vl-input { flex: 1 1 auto; }
+.vl-modal-tools .vl-select { flex: 0 0 138px; }
+
+/* --- reagent list --- */
+.vl-reagent-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 3px;
+}
+
+.vl-reagent-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--vl-radius);
+  border: 1px solid transparent;
+  background: rgba(11,21,36,0.6);
+  color: var(--vl-text-0);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--vl-sans);
+  transition: background .14s ease, border-color .14s ease, transform .1s ease;
+}
+.vl-reagent-row:hover {
+  background: rgba(22,38,63,0.92);
+  border-color: rgba(56,189,248,0.28);
+}
+.vl-reagent-row.is-selected {
+  background: linear-gradient(90deg, rgba(56,189,248,0.18), rgba(56,189,248,0.05));
+  border-color: rgba(56,189,248,0.6);
+  box-shadow: 0 0 0 1px rgba(56,189,248,0.14) inset;
+}
+
+.vl-reagent-swatch {
+  flex: 0 0 auto;
+  width: 16px; height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid var(--vl-line);
+  box-shadow: 0 0 8px -3px rgba(0,0,0,0.9) inset;
+}
+
+.vl-reagent-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.vl-reagent-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--vl-text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vl-reagent-formula {
+  font-family: var(--vl-mono);
+  font-size: 11px;
+  color: var(--vl-cyan);
+  letter-spacing: 0.01em;
+}
+
+.vl-reagent-meta {
+  font-family: var(--vl-mono);
+  font-size: 9.5px;
+  color: var(--vl-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vl-reagent-cat {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.vl-empty {
+  padding: 26px 12px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--vl-text-2);
+  font-style: italic;
+}
+
+/* --- add panel --- */
+.vl-add-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 11px;
+  border-radius: var(--vl-radius);
+  border: 1px solid var(--vl-line-soft);
+  background: rgba(4,10,19,0.85);
+}
+
+.vl-add-row { display: flex; align-items: center; gap: 8px; }
+
+.vl-selected-label {
+  font-size: 11px;
+  color: var(--vl-text-1);
+  line-height: 1.45;
+  min-height: 16px;
+}
+.vl-selected-label strong { color: var(--vl-text-0); font-weight: 700; }
+.vl-inline-formula {
+  font-family: var(--vl-mono);
+  color: var(--vl-cyan);
+  margin-left: 3px;
+}
+.vl-inline-meta {
+  font-family: var(--vl-mono);
+  font-size: 10px;
+  color: var(--vl-text-2);
+}
+
+.vl-add-inputs { flex-wrap: nowrap; }
+.vl-add-inputs .vl-input { flex: 1 1 auto; min-width: 62px; }
+
+/* --- unit badge --- */
+.vl-unit-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 7px 9px;
+  border-radius: var(--vl-radius);
+  font-family: var(--vl-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #03141f;
+  background: linear-gradient(180deg, #7dd3fc, #38bdf8);
+  border: 1px solid #38bdf8;
+  box-shadow: 0 0 16px -6px rgba(56,189,248,0.9);
+}
+.vl-unit-badge[data-unit="mL"] {
+  background: linear-gradient(180deg, #a5f3fc, #22d3ee);
+  border-color: #22d3ee;
+  box-shadow: 0 0 16px -6px rgba(34,211,238,0.9);
+}
+.vl-unit-badge[data-unit="mol"] {
+  background: linear-gradient(180deg, #c4b5fd, #a78bfa);
+  border-color: #a78bfa;
+  box-shadow: 0 0 16px -6px rgba(167,139,250,0.9);
+}
+
+/* --------------------------------------------------------------------------
+   Right column header
+   ----------------------------------------------------------------------- */
+.vl-right-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border-radius: var(--vl-radius-lg);
+  border: 1px solid var(--vl-line-soft);
+  background: linear-gradient(120deg, rgba(56,189,248,0.08), rgba(167,139,250,0.05));
+  flex-shrink: 0;
+}
+
+.vl-right-head .vl-h-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--vl-text-0);
+}
+.vl-right-head .vl-h-sub {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vl-text-2);
+  margin-top: 1px;
+}
+
+.vl-right-head .vl-btn { margin-left: auto; }
+
+/* --------------------------------------------------------------------------
+   Preset chips
+   ----------------------------------------------------------------------- */
+.vl-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.vl-chip {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--vl-line);
+  background: rgba(11,21,36,0.7);
+  color: var(--vl-text-1);
+  font-family: var(--vl-mono);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, color .14s ease, transform .1s ease;
+  white-space: nowrap;
+}
+.vl-chip:hover {
+  background: rgba(56,189,248,0.14);
+  border-color: rgba(56,189,248,0.45);
+  color: var(--vl-text-0);
+}
+.vl-chip:active { transform: scale(0.96); }
+.vl-chip[data-hazard="1"]:hover {
+  background: rgba(248,113,113,0.16);
+  border-color: rgba(248,113,113,0.5);
+  color: #fca5a5;
+}
+
+/* --------------------------------------------------------------------------
+   Section label
+   ----------------------------------------------------------------------- */
+.vl-section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vl-text-2);
+  margin: 0 0 7px;
+}
+
+.vl-hint {
+  font-size: 10px;
+  color: var(--vl-text-2);
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion
+   ----------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 </style>
 </head>
 
-<body class="h-full w-full overflow-hidden bg-slate-950 font-sans text-slate-100 antialiased">
+<body class="h-full bg-slate-950 text-slate-100">
 
 <!-- ==========================================================================
-     MAIN WORKBENCH CONTAINER — 100VH VIEWPORT LOCK, ZERO MARGIN, NON-SCROLLING
-     ========================================================================== -->
-<div class="relative flex flex-row w-full h-screen max-h-screen overflow-hidden p-2 gap-3 bg-slate-950 font-sans text-slate-100">
+     ROOT — STRICT 2-COLUMN SIDE-BY-SIDE LAYOUT
+     ======================================================================= -->
+<div id="appRoot"
+     class="flex flex-row w-full h-screen max-h-screen overflow-hidden p-2 gap-3 bg-slate-950">
 
-  <!-- ========================================================================
-       LEFT COLUMN — THE WORKBENCH STAGE (EXACT 50% WIDTH)
-       ======================================================================== -->
-  <section class="w-1/2 flex flex-col gap-2 h-full min-w-0">
+  <!-- ======================================================================
+       LEFT COLUMN — WORKBENCH (50%)
+       =================================================================== -->
+  <section id="workbenchColumn"
+           class="vl-col flex-1 min-w-0 w-1/2 h-full">
 
-    <!-- ---------------------------------------------------------------------
-         TOP PANEL — APPARATUS CANVAS STAGE (LOCKED 260PX)
-         --------------------------------------------------------------------- -->
-    <div
-      id="canvasStageWrapper"
-      class="h-[260px] flex-none relative bg-slate-900/90 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
-
-      <!-- Render Target -->
-      <canvas id="labCanvas" class="w-full h-full block"></canvas>
-
-      <!-- Overlay: Scanline / grid ambience -->
-      <div
-        class="pointer-events-none absolute inset-0 opacity-[0.07]"
-        style="background-image:
-          linear-gradient(rgba(148,163,184,0.6) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(148,163,184,0.6) 1px, transparent 1px);
-          background-size: 26px 26px;">
+    <!-- Brand header -->
+    <header class="vl-brand">
+      <div class="vl-brand-mark">⚗️</div>
+      <div class="vl-brand-text">
+        <h1>VirtuaLab Pro</h1>
+        <p>Thermodynamics &amp; Reactivity Simulator</p>
       </div>
-
-      <!-- Overlay: Corner vignette -->
-      <div class="pointer-events-none absolute inset-0"
-           style="background: radial-gradient(ellipse at center, transparent 45%, rgba(2,6,23,0.65) 100%);">
+      <div class="vl-status">
+        <span class="vl-led"></span>
+        <span>ENGINE ONLINE</span>
       </div>
+    </header>
 
-      <!-- Overlay: Floating status chips (top-left cluster) -->
-      <div class="pointer-events-none absolute top-2.5 left-2.5 flex flex-col gap-1.5">
-
-        <!-- Temperature chip -->
-        <div class="pointer-events-auto flex items-center gap-2 rounded-lg bg-slate-950/75 backdrop-blur-md px-2.5 py-1.5 border border-slate-700/70 shadow-lg">
-          <span class="text-[13px] leading-none">🌡️</span>
-          <div class="flex flex-col leading-none">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Temperature</span>
-            <span class="flex items-baseline gap-0.5">
-              <span id="tempReadout" class="text-[15px] font-bold text-orange-300 tabular-nums">25.0</span>
-              <span class="text-[10px] font-semibold text-slate-500">°C</span>
-            </span>
-          </div>
-        </div>
-
-        <!-- Ambient indicator chip -->
-        <div class="pointer-events-auto flex items-center gap-2 rounded-lg bg-slate-950/75 backdrop-blur-md px-2.5 py-1.5 border border-slate-700/70 shadow-lg">
-          <span id="ambientDot" class="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]"></span>
-          <div class="flex flex-col leading-none">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Ambient</span>
-            <span id="ambientLabel" class="text-[11px] font-semibold text-emerald-300">STABLE · 1 atm</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Overlay: Right-side vertical readouts -->
-      <div class="pointer-events-none absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5">
-
-        <!-- Vessel state chip -->
-        <div class="pointer-events-auto rounded-lg bg-slate-950/75 backdrop-blur-md px-2.5 py-1.5 border border-indigo-500/40 shadow-lg">
-          <div class="flex flex-col leading-none items-end">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Vessel</span>
-            <span id="vesselStateChip" class="text-[11px] font-bold text-indigo-300">EMPTY</span>
-          </div>
-        </div>
-
-        <!-- Stirrer indicator -->
-        <div class="pointer-events-auto flex items-center gap-1.5 rounded-lg bg-slate-950/75 backdrop-blur-md px-2.5 py-1.5 border border-slate-700/70 shadow-lg">
-          <span id="stirIcon" class="text-[12px] leading-none">🧲</span>
-          <span id="stirReadout" class="text-[10px] font-semibold text-emerald-300 tabular-nums">0 RPM</span>
-        </div>
-
-        <!-- Burner indicator -->
-        <div class="pointer-events-auto flex items-center gap-1.5 rounded-lg bg-slate-950/75 backdrop-blur-md px-2.5 py-1.5 border border-slate-700/70 shadow-lg">
-          <span class="text-[12px] leading-none">🔥</span>
-          <span id="flameReadout" class="text-[10px] font-semibold text-amber-300 tabular-nums">0%</span>
-        </div>
-      </div>
-
-      <!-- Overlay: Bottom-left caption -->
-      <div class="pointer-events-none absolute bottom-2.5 left-2.5">
-        <span class="rounded-md bg-slate-950/70 backdrop-blur-md px-2 py-1 text-[9px] font-bold tracking-[0.16em] text-slate-400 uppercase border border-slate-800">
-          Apparatus Stage · Real-Time Render
-        </span>
-      </div>
-
-      <!-- Overlay: Bottom-right hazard badge (hidden until hazard) -->
-      <div id="canvasHazardBadge" class="pointer-events-none absolute bottom-2.5 right-2.5 hidden">
-        <span class="animate-pulseHazard rounded-md bg-red-600/90 px-2.5 py-1 text-[10px] font-extrabold tracking-[0.14em] text-white uppercase shadow-lg">
-          ⚠️ Hazard Active
-        </span>
-      </div>
+    <!-- Formula banner -->
+    <div id="formulaBanner" class="vl-banner-idle" role="status" aria-live="polite">
+      <span class="vl-banner-text">Ready — add a reagent to begin.</span>
     </div>
 
-    <!-- ---------------------------------------------------------------------
-         MIDDLE PANEL — LIVE REACTION & PHYSICAL STATE BANNER
-         --------------------------------------------------------------------- -->
-    <div class="flex-none bg-slate-900 border border-indigo-500/40 rounded-xl p-3 shadow-lg">
-
-      <!-- Header row -->
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-[13px] leading-none">⚗️</span>
-          <h2 class="text-[10px] font-extrabold tracking-[0.18em] text-indigo-300 uppercase truncate">
-            Live Reaction · Physical State
-          </h2>
-        </div>
-        <span id="stateBanner" data-tone="neutral"
-              class="text-[10px] font-bold tracking-[0.1em] text-sky-300 uppercase truncate max-w-[45%] text-right">
-          IDLE
-        </span>
-      </div>
-
-      <!-- Stoichiometric equation banner -->
-      <div class="rounded-lg bg-slate-950/70 border border-slate-800 px-3 py-2 mb-2.5 overflow-x-auto custom-scrollbar">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-[8px] font-bold tracking-[0.16em] text-slate-500 uppercase">Balanced Stoichiometry</span>
-        </div>
-        <div id="formulaBanner"
-             class="font-mono text-[13px] font-semibold text-slate-200 whitespace-nowrap leading-relaxed">
-          No active reaction. Add reagents to begin.
-        </div>
-      </div>
-
-      <!-- Active species + pH meter grid -->
-      <div class="grid grid-cols-1 gap-2.5">
-
-        <!-- Active physical species list -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[8px] font-bold tracking-[0.16em] text-slate-500 uppercase">Active Physical Species</span>
-            <span id="speciesCount" class="text-[9px] font-bold text-slate-600 tabular-nums">0</span>
-          </div>
-          <div id="activeSpeciesList"
-               class="flex flex-wrap items-center gap-1.5 min-h-[26px] rounded-lg bg-slate-950/50 border border-slate-800/80 px-2 py-1.5">
-            <span class="text-[10px] italic text-slate-600">None detected in vessel</span>
-          </div>
-        </div>
-
-        <!-- Precision pH meter -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[8px] font-bold tracking-[0.16em] text-slate-500 uppercase">Precision pH Scale</span>
-            <span class="flex items-baseline gap-1">
-              <span class="text-[9px] font-bold text-slate-600">pH</span>
-              <span id="phValue" class="metric-value text-[13px] font-extrabold text-emerald-300 tabular-nums">7.00</span>
-            </span>
-          </div>
-
-          <div id="phMeterBar" class="relative h-[10px] w-full rounded-full overflow-hidden border border-slate-800 bg-slate-950"
-               data-role="ph-meter" data-ph="7.00">
-            <!-- Static rainbow reference track -->
-            <div class="absolute inset-0 opacity-30"
-                 style="background: linear-gradient(90deg,
-                   #ef4444 0%, #f97316 14%, #eab308 28%, #22c55e 42%,
-                   #22c55e 58%, #06b6d4 72%, #3b82f6 85%, #8b5cf6 100%);">
-            </div>
-            <!-- Dynamic fill driven by app.js -->
-            <div id="phMeterFill"
-                 class="ph-fill absolute inset-y-0 left-0 rounded-full"
-                 style="width: 50%; background: #3ddc84; box-shadow: 0 0 12px #3ddc84;">
-            </div>
-            <!-- Marker ticks -->
-            <div class="absolute inset-0 flex justify-between px-[3%] pointer-events-none">
-              <span class="w-px h-full bg-slate-700/60"></span>
-              <span class="w-px h-full bg-slate-700/60"></span>
-              <span class="w-px h-full bg-slate-700/60"></span>
-              <span class="w-px h-full bg-slate-700/60"></span>
-              <span class="w-px h-full bg-slate-700/60"></span>
-              <span class="w-px h-full bg-slate-700/60"></span>
-              <span class="w-px h-full bg-slate-700/60"></span>
-            </div>
-          </div>
-
-          <div class="mt-1 flex justify-between text-[8px] font-bold tracking-wider text-slate-600 tabular-nums">
-            <span>0 · ACIDIC</span>
-            <span>7 · NEUTRAL</span>
-            <span>14 · BASIC</span>
-          </div>
-        </div>
-      </div>
+    <!-- Canvas workbench -->
+    <div class="vl-workbench">
+      <canvas id="labCanvas" width="800" height="600" aria-label="Laboratory workbench view"></canvas>
+      <span class="vl-workbench-badge">500 mL Beaker</span>
     </div>
 
-    <!-- ---------------------------------------------------------------------
-         BOTTOM PANEL — SYSTEM REACTION LOG TERMINAL
-         --------------------------------------------------------------------- -->
-    <div class="flex-1 min-h-0 flex flex-col bg-slate-900/90 rounded-xl border border-slate-800 shadow-lg overflow-hidden">
+    <!-- Action bar -->
+    <div class="vl-panel vl-actionbar">
+      <button id="openReagentModalBtn" type="button" class="vl-btn vl-btn-primary">
+        <span class="vl-btn-icon">🧪</span> Add Reagent
+      </button>
 
-      <!-- Terminal header -->
-      <div class="flex-none flex items-center justify-between px-3 py-2 border-b border-slate-800 bg-slate-950/60">
-        <div class="flex items-center gap-2">
-          <span class="flex gap-1">
-            <span class="h-2 w-2 rounded-full bg-red-500/80"></span>
-            <span class="h-2 w-2 rounded-full bg-amber-400/80"></span>
-            <span class="h-2 w-2 rounded-full bg-emerald-400/80"></span>
-          </span>
-          <h2 class="text-[10px] font-extrabold tracking-[0.18em] text-slate-400 uppercase">
-            System Reaction Log
-          </h2>
-        </div>
-        <button type="button" id="clearLogBtn"
-                class="text-[9px] font-bold tracking-wider text-slate-500 hover:text-slate-300 uppercase transition-colors cursor-pointer">
-          Clear
-        </button>
-      </div>
+      <span class="vl-divider" aria-hidden="true"></span>
 
-      <!-- Terminal body -->
-      <div id="logTerminal"
-           data-role="log-terminal"
-           class="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900/90 p-3 font-mono text-[11px] leading-relaxed">
-        <!-- Populated at runtime by app.js -->
-      </div>
+      <input id="waterInput"
+             type="number"
+             class="vl-input vl-input-water text-slate-100 bg-slate-800"
+             value="25" min="1" max="500" step="5"
+             aria-label="Water volume in millilitres">
+      <button id="addWaterBtn" type="button" class="vl-btn">
+        <span class="vl-btn-icon">💧</span> Add H₂O
+      </button>
+
+      <span class="vl-divider" aria-hidden="true"></span>
+
+      <button id="stirBtn" type="button" class="vl-btn">
+        <span class="vl-btn-icon">🌀</span> Stir
+      </button>
+      <button id="refillBtn" type="button" class="vl-btn">
+        <span class="vl-btn-icon">🚰</span> Refill
+      </button>
+      <button id="flushBtn" type="button" class="vl-btn vl-btn-ghost">
+        <span class="vl-btn-icon">♻️</span> Flush
+      </button>
+      <button id="clearVesselBtn" type="button" class="vl-btn vl-btn-danger">
+        <span class="vl-btn-icon">🗑️</span> Clear
+      </button>
     </div>
+
+    <!-- Log terminal -->
+    <div class="vl-panel flex-1 min-h-0 flex flex-col">
+      <div class="vl-panel-head">
+        <div class="vl-panel-title">
+          <span class="vl-dot"></span> Reaction Log
+        </div>
+        <span class="vl-panel-title" style="letter-spacing:.06em;">live telemetry</span>
+      </div>
+      <div id="logTerminal" role="log" aria-live="polite"></div>
+    </div>
+
   </section>
 
-  <!-- ========================================================================
-       RIGHT COLUMN — CONTROLS & ANALYTICS TELEMETRY (EXACT 50% WIDTH)
-       ======================================================================== -->
-  <section class="w-1/2 flex flex-col gap-2 h-full relative min-w-0">
+  <!-- ======================================================================
+       RIGHT COLUMN — CONTROLS & ANALYTICS (50%) + MODAL OVERLAY
+       =================================================================== -->
+  <section id="controlColumn"
+           class="vl-col relative flex-1 min-w-0 w-1/2 h-full">
 
-    <!-- ---------------------------------------------------------------------
-         TOP TRIGGER — OPEN REAGENT LIBRARY
-         --------------------------------------------------------------------- -->
-    <button type="button"
-            id="openReagentModalBtn"
-            data-action="open-library"
-            class="flex-none w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.985] text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between cursor-pointer transition-all duration-150 border border-indigo-400/30">
-      <span class="flex items-center gap-2.5">
-        <span class="text-lg leading-none">➕</span>
-        <span class="text-[13px] tracking-[0.06em] uppercase">Open Reagent &amp; Element Library</span>
-      </span>
-      <span class="text-[10px] font-extrabold tracking-wider bg-white/15 rounded-md px-2 py-1">
-        DATABASE
-      </span>
-    </button>
+    <!-- Right header -->
+    <header class="vl-right-head">
+      <div>
+        <div class="vl-h-title">Controls &amp; Analytics</div>
+        <div class="vl-h-sub">Real-time thermodynamics</div>
+      </div>
+      <button id="openReagentModalBtnTop" type="button" class="vl-btn vl-btn-primary"
+              data-mirror="openReagentModalBtn">
+        <span class="vl-btn-icon">➕</span> Reagents
+      </button>
+    </header>
 
-    <!-- ---------------------------------------------------------------------
-         MIDDLE PANEL — APPARATUS CONTROL DOCK
-         --------------------------------------------------------------------- -->
-    <div class="flex-none bg-slate-900/90 rounded-xl p-3 border border-slate-800 flex flex-col gap-2 shadow-lg">
-
-      <!-- Dock header -->
-      <div class="flex items-center justify-between">
-        <h2 class="flex items-center gap-2 text-[10px] font-extrabold tracking-[0.18em] text-slate-400 uppercase">
-          <span class="text-[12px] leading-none">🎛️</span>
-          Apparatus Control Dock
-        </h2>
-        <div class="flex items-center gap-1.5">
-          <button type="button"
-                  id="muteToggleBtn"
-                  data-action="toggle-mute"
-                  aria-pressed="false"
-                  class="text-[9px] font-bold tracking-wider text-slate-400 hover:text-slate-200 bg-slate-950/70 hover:bg-slate-800 border border-slate-700/70 rounded-md px-2 py-1 transition-colors cursor-pointer">
-            🔊 SOUND
-          </button>
-          <button type="button"
-                  id="aiTutorToggleBtn"
-                  data-action="toggle-tutor"
-                  aria-expanded="false"
-                  class="text-[9px] font-bold tracking-wider text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 rounded-md px-2 py-1 transition-colors cursor-pointer">
-            🤖 AI TUTOR
-          </button>
+    <!-- ================================================================
+         SLIDER CONTROLS
+         ============================================================= -->
+    <div class="vl-panel">
+      <div class="vl-panel-head">
+        <div class="vl-panel-title">
+          <span class="vl-dot"></span> Apparatus Control
         </div>
       </div>
+      <div class="vl-panel-body" style="padding-top:6px;padding-bottom:6px;">
 
-      <!-- Sliders grid -->
-      <div class="grid grid-cols-2 gap-x-3 gap-y-2.5">
-
-        <!-- pH Spectrum -->
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label for="phSlider" class="text-[9px] font-bold tracking-wider text-slate-400 uppercase">
-              pH Spectrum
-            </label>
-            <span id="phSliderValue" class="text-[10px] font-bold text-emerald-300 tabular-nums">7.00</span>
-          </div>
-          <input type="range"
-                 id="phSlider"
-                 data-role="ph-slider"
-                 name="ph"
-                 class="lab-slider ph-slider"
-                 min="0" max="14" step="0.01" value="7" />
-          <div class="mt-0.5 flex justify-between text-[8px] font-bold text-slate-600 tabular-nums">
-            <span>0</span><span>7</span><span>14</span>
-          </div>
+        <div class="vl-slider-row">
+          <label class="vl-slider-label" for="flameSlider">Flame</label>
+          <input id="flameSlider" type="range" class="vl-range vl-range-flame"
+                 min="0" max="100" step="1" value="0"
+                 aria-label="Bunsen burner flame intensity">
+          <span class="vl-slider-value" data-telemetry="flame">off</span>
         </div>
 
-        <!-- Bunsen Flame Intensity -->
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label for="flameSlider" class="text-[9px] font-bold tracking-wider text-slate-400 uppercase">
-              Bunsen Flame
-            </label>
-            <span id="flameSliderValue" class="text-[10px] font-bold text-amber-300 tabular-nums">0%</span>
-          </div>
-          <input type="range"
-                 id="flameSlider"
-                 data-role="flame-slider"
-                 name="flame"
-                 class="lab-slider flame-slider"
-                 min="0" max="100" step="1" value="0" />
-          <div class="mt-0.5 flex justify-between text-[8px] font-bold text-slate-600 tabular-nums">
-            <span>OFF</span><span>MAX</span>
-          </div>
+        <div class="vl-slider-row">
+          <label class="vl-slider-label" for="stirrerSlider">Stirrer</label>
+          <input id="stirrerSlider" type="range" class="vl-range"
+                 min="0" max="100" step="1" value="0"
+                 aria-label="Magnetic stirrer speed">
+          <span class="vl-slider-value" data-telemetry="stirring">off</span>
         </div>
 
-        <!-- Magnetic Stirrer RPM -->
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label for="stirrerSlider" class="text-[9px] font-bold tracking-wider text-slate-400 uppercase">
-              Magnetic Stirrer
-            </label>
-            <span id="stirrerSliderValue" class="text-[10px] font-bold text-emerald-300 tabular-nums">0 RPM</span>
-          </div>
-          <input type="range"
-                 id="stirrerSlider"
-                 data-role="stirrer-slider"
-                 name="stirrer"
-                 class="lab-slider stirrer-slider"
-                 min="0" max="1200" step="10" value="0" />
-          <div class="mt-0.5 flex justify-between text-[8px] font-bold text-slate-600 tabular-nums">
-            <span>0</span><span>600</span><span>1200</span>
-          </div>
+        <div class="vl-slider-row">
+          <label class="vl-slider-label" for="titrationSlider">Titrate</label>
+          <input id="titrationSlider" type="range" class="vl-range vl-range-titrate"
+                 min="0" max="100" step="1" value="0"
+                 aria-label="Titration drip rate">
+          <span class="vl-slider-value">0.1 M</span>
         </div>
 
-        <!-- Titration Drip Valve -->
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label for="dripSlider" class="text-[9px] font-bold tracking-wider text-slate-400 uppercase">
-              Titration Drip
-            </label>
-            <span id="dripSliderValue" class="text-[10px] font-bold text-sky-300 tabular-nums">0.0 mL/s</span>
-          </div>
-          <input type="range"
-                 id="dripSlider"
-                 data-role="drip-slider"
-                 name="drip"
-                 class="lab-slider drip-slider"
-                 min="0" max="10" step="0.1" value="0" />
-          <div class="mt-0.5 flex justify-between text-[8px] font-bold text-slate-600 tabular-nums">
-            <span>CLOSED</span><span>OPEN</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Divider -->
-      <div class="h-px w-full bg-slate-800"></div>
-
-      <!-- Action buttons row 1 -->
-      <div class="grid grid-cols-4 gap-1.5">
-
-        <button type="button"
-                id="clearVesselBtn"
-                data-action="clear-vessel"
-                class="flex flex-col items-center justify-center gap-0.5 rounded-lg bg-red-600/15 hover:bg-red-600/30 border border-red-500/40 text-red-300 hover:text-red-100 py-2 px-1 transition-colors cursor-pointer">
-          <span class="text-[13px] leading-none">🗑️</span>
-          <span class="text-[8px] font-extrabold tracking-wider uppercase">Clear</span>
-        </button>
-
-        <button type="button"
-                id="refillBtn"
-                data-action="refill"
-                class="flex flex-col items-center justify-center gap-0.5 rounded-lg bg-sky-600/15 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 hover:text-sky-100 py-2 px-1 transition-colors cursor-pointer">
-          <span class="text-[13px] leading-none">🔄</span>
-          <span class="text-[8px] font-extrabold tracking-wider uppercase">Refill</span>
-        </button>
-
-        <button type="button"
-                id="stirPulseBtn"
-                data-action="stir-pulse"
-                class="flex flex-col items-center justify-center gap-0.5 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 hover:text-emerald-100 py-2 px-1 transition-colors cursor-pointer">
-          <span class="text-[13px] leading-none">🌀</span>
-          <span class="text-[8px] font-extrabold tracking-wider uppercase">Stir</span>
-        </button>
-
-        <button type="button"
-                id="flushBtn"
-                data-action="flush"
-                class="flex flex-col items-center justify-center gap-0.5 rounded-lg bg-slate-600/20 hover:bg-slate-600/40 border border-slate-500/40 text-slate-300 hover:text-slate-100 py-2 px-1 transition-colors cursor-pointer">
-          <span class="text-[13px] leading-none">🧹</span>
-          <span class="text-[8px] font-extrabold tracking-wider uppercase">Flush</span>
-        </button>
-      </div>
-
-      <!-- Action buttons row 2 — Water injection -->
-      <div class="flex items-center gap-2">
-
-        <div class="flex items-center gap-1.5 rounded-lg bg-slate-950/70 border border-slate-700/70 px-2 py-1.5 flex-1 min-w-0">
-          <span class="text-[12px] leading-none">💧</span>
-          <input type="number"
-                 id="waterInput"
-                 data-role="water-amount"
-                 name="water-amount"
-                 value="50"
-                 min="1"
-                 max="5000"
-                 step="1"
-                 class="w-full bg-transparent border-none outline-none text-[11px] font-bold text-sky-300 tabular-nums placeholder-slate-600 min-w-0"
-                 aria-label="Measured water volume in millilitres" />
-          <span class="text-[9px] font-bold text-slate-500 whitespace-nowrap">mL H₂O</span>
-        </div>
-
-        <button type="button"
-                id="addWaterBtn"
-                data-action="add-water"
-                class="flex-none rounded-lg bg-sky-600/20 hover:bg-sky-600/40 border border-sky-500/50 text-sky-200 hover:text-white text-[9px] font-extrabold tracking-wider uppercase px-3 py-2 transition-colors cursor-pointer">
-          + Add Water
-        </button>
       </div>
     </div>
 
-    <!-- ---------------------------------------------------------------------
-         BOTTOM PANEL — THERMODYNAMICS & ANALYTICAL TELEMETRY
-         --------------------------------------------------------------------- -->
-    <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900/90 rounded-xl p-3 border border-slate-800 shadow-lg">
-
-      <!-- Telemetry header -->
-      <div class="flex items-center justify-between mb-2.5">
-        <h2 class="flex items-center gap-2 text-[10px] font-extrabold tracking-[0.18em] text-slate-400 uppercase">
-          <span class="text-[12px] leading-none">📊</span>
-          Thermodynamics &amp; Analytical Telemetry
-        </h2>
-        <span id="telemetryStatus" class="text-[9px] font-bold text-emerald-400 tabular-nums">● LIVE</span>
+    <!-- ================================================================
+         TELEMETRY
+         ============================================================= -->
+    <div class="vl-panel flex-1 min-h-0 flex flex-col">
+      <div class="vl-panel-head">
+        <div class="vl-panel-title">
+          <span class="vl-dot"></span> Live Analytics
+        </div>
+        <span class="vl-panel-title" style="letter-spacing:.06em;">220 ms</span>
       </div>
 
-      <!-- Metrics grid -->
-      <div class="grid grid-cols-2 gap-2">
+      <div class="vl-panel-body" style="overflow-y:auto;">
 
-        <!-- Total Mass -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Total Mass</span>
-            <span class="text-[10px] leading-none">⚖️</span>
+        <!-- Solution swatch -->
+        <div class="vl-swatch-row" style="margin-bottom:10px;">
+          <div id="solutionSwatch"></div>
+          <div class="vl-swatch-meta">
+            <strong>Solution Colour</strong>
+            <span>ion &amp; indicator derived</span>
           </div>
-          <div class="flex items-baseline gap-1">
-            <span id="mass" data-role="mass" class="metric-value text-[16px] font-extrabold text-slate-100 tabular-nums">0.00</span>
-            <span class="text-[9px] font-bold text-slate-500">g</span>
+          <div class="vl-swatch-meta" style="margin-left:auto;text-align:right;">
+            <strong data-telemetry="turbidity">0 %</strong>
+            <span>turbidity</span>
           </div>
         </div>
 
-        <!-- Total Volume -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Total Volume</span>
-            <span class="text-[10px] leading-none">🧪</span>
+        <!-- Primary metrics -->
+        <p class="vl-section-label">State</p>
+        <div class="vl-telemetry-grid">
+          <div class="vl-metric">
+            <span class="vl-metric-label">Temperature</span>
+            <span class="vl-metric-value" data-telemetry="temperature">25.0 °C</span>
           </div>
-          <div class="flex items-baseline gap-1">
-            <span id="volume" data-role="volume" class="metric-value text-[16px] font-extrabold text-slate-100 tabular-nums">0.00</span>
-            <span class="text-[9px] font-bold text-slate-500">mL</span>
+          <div class="vl-metric">
+            <span class="vl-metric-label">pH</span>
+            <span class="vl-metric-value" data-telemetry="ph">—</span>
+          </div>
+          <div class="vl-metric">
+            <span class="vl-metric-label">Volume</span>
+            <span class="vl-metric-value" data-telemetry="volume">0.0 mL</span>
+          </div>
+
+          <div class="vl-metric">
+            <span class="vl-metric-label">Kelvin</span>
+            <span class="vl-metric-value" data-telemetry="temperatureK">298.15 K</span>
+          </div>
+          <div class="vl-metric">
+            <span class="vl-metric-label">Heat (q)</span>
+            <span class="vl-metric-value" data-telemetry="heat">0.00 kJ</span>
+          </div>
+          <div class="vl-metric">
+            <span class="vl-metric-label">Reactions</span>
+            <span class="vl-metric-value" data-telemetry="reactions">0</span>
           </div>
         </div>
 
-        <!-- Molarity -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Molarity</span>
-            <span class="text-[9px] font-bold text-slate-600 font-mono">M = n/V</span>
+        <!-- Products -->
+        <p class="vl-section-label" style="margin-top:12px;">Products</p>
+        <div class="vl-telemetry-grid">
+          <div class="vl-metric">
+            <span class="vl-metric-label">Precipitate</span>
+            <span class="vl-metric-value" data-telemetry="precipitate">0.000 g</span>
           </div>
-          <div class="flex items-baseline gap-1">
-            <span id="molarity" data-role="molarity" class="metric-value text-[16px] font-extrabold text-violet-300 tabular-nums">0.0000</span>
-            <span class="text-[9px] font-bold text-slate-500">M</span>
+          <div class="vl-metric">
+            <span class="vl-metric-label">Undissolved</span>
+            <span class="vl-metric-value" data-telemetry="solid">0.000 g</span>
+          </div>
+          <div class="vl-metric">
+            <span class="vl-metric-label">Gas (mol)</span>
+            <span class="vl-metric-value" data-telemetry="gas">0.0000 mol</span>
+          </div>
+
+          <div class="vl-metric vl-metric-wide">
+            <span class="vl-metric-label">Gas Volume @ STP (22.414 L/mol)</span>
+            <span class="vl-metric-value" data-telemetry="gasVolume">0.000 L</span>
           </div>
         </div>
 
-        <!-- Heat Exchange -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Heat Exchange</span>
-            <span class="text-[9px] font-bold text-slate-600 font-mono">q=mcΔT</span>
+        <!-- Direct readouts (consumed by app.js) -->
+        <div class="vl-telemetry-grid" style="margin-top:10px;">
+          <div class="vl-metric">
+            <span class="vl-metric-label">T</span>
+            <span class="vl-metric-value" id="tempReadout">25.0 °C</span>
           </div>
-          <div class="flex items-baseline gap-1">
-            <span id="heat" data-role="heat" class="metric-value text-[16px] font-extrabold text-orange-300 tabular-nums">0.000</span>
-            <span class="text-[9px] font-bold text-slate-500">kJ</span>
+          <div class="vl-metric">
+            <span class="vl-metric-label">pH</span>
+            <span class="vl-metric-value" id="phReadout">—</span>
           </div>
-        </div>
-
-        <!-- Enthalpy -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Enthalpy</span>
-            <span class="text-[9px] font-bold text-slate-600 font-mono">ΔH</span>
+          <div class="vl-metric">
+            <span class="vl-metric-label">V</span>
+            <span class="vl-metric-value" id="volumeReadout">0.0 mL</span>
           </div>
-          <div class="flex items-baseline gap-1">
-            <span id="enthalpy" data-role="enthalpy" data-sign="none" class="metric-value text-[16px] font-extrabold text-slate-100 tabular-nums">0.00</span>
-            <span class="text-[9px] font-bold text-slate-500">kJ/mol</span>
+          <div class="vl-metric">
+            <span class="vl-metric-label">V(gas)</span>
+            <span class="vl-metric-value" id="gasReadout">0.000 L</span>
           </div>
-        </div>
-
-        <!-- STP Gas Volume -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Gas STP Vol.</span>
-            <span class="text-[9px] font-bold text-slate-600 font-mono">n×22.4</span>
+          <div class="vl-metric">
+            <span class="vl-metric-label">m(ppt)</span>
+            <span class="vl-metric-value" id="precipReadout">0.000 g</span>
           </div>
-          <div class="flex items-baseline gap-1">
-            <span id="gasVolume" data-role="gas-volume" class="metric-value text-[16px] font-extrabold text-cyan-300 tabular-nums">0.000</span>
-            <span class="text-[9px] font-bold text-slate-500">L</span>
+          <div class="vl-metric">
+            <span class="vl-metric-label">Mode</span>
+            <span class="vl-metric-value">batch</span>
           </div>
         </div>
 
-        <!-- Active Ion Species -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5 col-span-1">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Active Ions</span>
-            <span class="text-[10px] leading-none">⚡</span>
-          </div>
-          <div id="ions" data-role="ions"
-               class="text-[11px] font-semibold text-sky-300 truncate leading-tight">
-            —
-          </div>
+        <!-- Quick presets -->
+        <p class="vl-section-label" style="margin-top:14px;">Quick Presets</p>
+        <div class="vl-presets">
+          <button type="button" class="vl-chip" data-preset="nacl">NaCl</button>
+          <button type="button" class="vl-chip" data-preset="hcl">HCl</button>
+          <button type="button" class="vl-chip" data-preset="naoh">NaOH</button>
+          <button type="button" class="vl-chip" data-preset="cuso4">CuSO₄</button>
+          <button type="button" class="vl-chip" data-preset="agno3">AgNO₃</button>
+          <button type="button" class="vl-chip" data-preset="ki">KI</button>
+          <button type="button" class="vl-chip" data-preset="caco3">CaCO₃</button>
+          <button type="button" class="vl-chip" data-preset="kmno4">KMnO₄</button>
+          <button type="button" class="vl-chip" data-hazard="1" data-preset="sodium-water">Na + H₂O</button>
+          <button type="button" class="vl-chip" data-hazard="1" data-preset="thermite">Mg + O₂</button>
         </div>
-
-        <!-- Stoichiometry -->
-        <div class="rounded-lg bg-slate-950/60 border border-slate-800 p-2.5 col-span-1">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Stoichiometry</span>
-            <span class="text-[10px] leading-none">🔢</span>
-          </div>
-          <div id="physicalState" data-role="physical-state"
-               class="text-[11px] font-semibold text-indigo-300 truncate leading-tight">
-            Idle
-          </div>
-        </div>
-      </div>
-
-      <!-- Equation strip (mirrors banner for convenience) -->
-      <div class="mt-2.5 rounded-lg bg-slate-950/60 border border-slate-800 p-2.5">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-[8px] font-bold tracking-[0.14em] text-slate-500 uppercase">Current Equation</span>
-          <span class="text-[8px] font-bold text-slate-600 uppercase">Stoichiometric Form</span>
-        </div>
-        <div id="equation" data-role="equation"
-             class="font-mono text-[12px] font-semibold text-slate-300 whitespace-nowrap overflow-x-auto custom-scrollbar leading-relaxed">
-          —
-        </div>
-      </div>
-
-      <!-- Footer hint -->
-      <div class="mt-2.5 flex items-center gap-2 rounded-lg bg-indigo-500/10 border border-indigo-500/25 px-2.5 py-1.5">
-        <span class="text-[11px] leading-none">💡</span>
-        <p class="text-[9px] text-indigo-200/80 leading-snug">
-          All thermodynamic values update live from the engine. STP gas volume assumes 22.4 L·mol⁻¹ at 273.15 K and 1 atm.
+        <p class="vl-hint">
+          Presets stage a ready-made scenario. Hazard chips trigger energetic reactions —
+          watch the flame tint and shockwave FX.
         </p>
+
       </div>
     </div>
 
-    <!-- ======================================================================
-         REAGENT LIBRARY OVERLAY MODAL
-         ====================================================================== -->
+    <!-- ================================================================
+         REAGENT OVERLAY MODAL — SLIDES OVER THE RIGHT PANEL
+         ============================================================= -->
     <div id="reagentModal"
-         data-role="library-modal"
-         aria-hidden="true"
-         class="modal-overlay hidden absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-md rounded-xl p-4 flex-col border border-indigo-500/30 shadow-2xl">
+         class="hidden"
+         style="display:none;"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="reagentModalTitle"
+         aria-hidden="true">
 
-      <!-- Header bar -->
-      <div class="flex-none flex items-center justify-between mb-3">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <span class="text-lg leading-none">🧪</span>
-          <div class="flex flex-col leading-tight min-w-0">
-            <h2 class="text-[13px] font-extrabold tracking-[0.08em] text-indigo-200 uppercase truncate">
-              Reagent &amp; Element Library
-            </h2>
-            <span id="libraryCountLabel" class="text-[9px] font-semibold text-slate-500">
-              Loading database…
-            </span>
-          </div>
+      <!-- Modal header -->
+      <div class="vl-modal-head">
+        <div>
+          <h2 id="reagentModalTitle">Reagent Library</h2>
+          <p>150+ species · academic database</p>
         </div>
-
-        <button type="button"
-                id="closeReagentModalBtn"
-                data-action="close-library"
-                class="flex-none bg-red-600 hover:bg-red-500 active:scale-95 text-white font-extrabold text-[10px] tracking-wider uppercase py-2 px-3 rounded-lg shadow-lg transition-all cursor-pointer border border-red-400/40">
-          ❌ CLOSE
-        </button>
+        <button id="closeReagentModalBtn"
+                type="button"
+                class="vl-modal-close"
+                aria-label="Close reagent library">✕</button>
       </div>
 
-      <!-- Search bar -->
-      <div class="flex-none mb-2.5">
-        <div class="flex items-center gap-2 rounded-lg bg-slate-900 border border-slate-700/70 px-3 py-2 focus-within:border-indigo-500/70 transition-colors">
-          <span class="text-[13px] leading-none text-slate-500">🔍</span>
-          <input type="text"
-                 id="reagentSearchInput"
-                 placeholder="Search by name, formula, or category…"
+      <!-- Modal body -->
+      <div class="vl-modal-body" data-modal-body>
+
+        <!-- Search + category filter -->
+        <div class="vl-modal-tools">
+          <input id="reagentSearch"
+                 type="text"
+                 class="vl-input text-slate-100 bg-slate-800"
+                 placeholder="Search by name, formula or ID…"
                  autocomplete="off"
                  spellcheck="false"
-                 class="w-full bg-transparent border-none outline-none text-[12px] text-slate-100 placeholder-slate-600" />
-          <button type="button"
-                  id="reagentSearchClear"
-                  class="hidden text-[11px] font-bold text-slate-500 hover:text-slate-300 transition-colors cursor-pointer">
-            ✕
-          </button>
+                 aria-label="Search reagents">
+          <select id="reagentCategoryFilter"
+                  class="vl-select text-slate-100 bg-slate-800"
+                  aria-label="Filter by category">
+            <option value="all">All categories</option>
+            <option value="element">⚛️ Elements</option>
+            <option value="oxide">🧱 Oxides</option>
+            <option value="acid">🧪 Acids</option>
+            <option value="base">🧼 Bases &amp; Hydroxides</option>
+            <option value="salt">💎 Salts</option>
+            <option value="solvent">💧 Solvents &amp; Organics</option>
+            <option value="indicator">🎨 Indicators</option>
+            <option value="catalyst">⚗️ Catalysts &amp; Reagents</option>
+          </select>
         </div>
-      </div>
 
-      <!-- Category filter tabs -->
-      <div class="flex-none mb-2.5">
-        <div id="categoryTabs"
-             data-role="library-tabs"
-             class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
-          <!-- Populated dynamically by app.js; static fallback tabs below -->
-          <button type="button" class="category-tab active text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="All">All</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Elements">Elements</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Metals">Metals</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Non-Metals">Non-Metals</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Basic Oxides">Basic Oxides</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Acidic Oxides">Acidic Oxides</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Amphoteric Oxides">Amphoteric Oxides</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Neutral Oxides">Neutral Oxides</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Acids">Acids</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Bases">Bases</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Salts">Salts</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Solvents">Solvents</button>
-          <button type="button" class="category-tab text-[10px] font-bold tracking-wider uppercase px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer" data-category="Indicators">Indicators</button>
-        </div>
-      </div>
+        <!-- Reagent list -->
+        <div id="reagentList" class="vl-reagent-list" role="listbox" aria-label="Reagent list"></div>
 
-      <!-- Scrollable reagent item grid -->
-      <div id="reagentListContainer"
-           data-role="library-list"
-           class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col gap-1 pr-0.5">
-        <!-- Populated dynamically by app.js -->
-        <div class="flex flex-col items-center justify-center h-full text-center py-8">
-          <span class="text-3xl mb-2 opacity-40">🧫</span>
-          <p class="text-[11px] font-semibold text-slate-500">Loading reagent database…</p>
-        </div>
-      </div>
-
-      <!-- Footer hint -->
-      <div class="flex-none mt-2.5 pt-2.5 border-t border-slate-800 flex items-center justify-between">
-        <p class="text-[9px] text-slate-500 leading-snug">
-          Select a quantity and press <span class="font-bold text-indigo-300">+ ADD</span> to introduce the reagent.
-        </p>
-        <span class="text-[9px] font-bold text-amber-400/80 uppercase tracking-wider">
-          ⚠️ Hazards auto-intercepted
-        </span>
-      </div>
-    </div>
-
-    <!-- ======================================================================
-         HAZARD INTERCEPT SAFETY MODAL
-         ====================================================================== -->
-    <div id="hazardModal"
-         data-role="hazard-modal"
-         aria-hidden="true"
-         role="alertdialog"
-         class="modal-overlay hidden absolute inset-0 z-[60] bg-slate-950/95 backdrop-blur-md rounded-xl p-4 flex-col items-center justify-center border-2 border-red-500/60 shadow-2xl">
-
-      <div class="w-full max-w-md mx-auto">
-
-        <!-- Warning stripes bar -->
-        <div class="hazard-stripes h-2 w-full rounded-t-xl"></div>
-
-        <!-- Panel body -->
-        <div class="hazard-panel bg-slate-900 border-x-2 border-b-2 border-red-500/60 rounded-b-xl p-5 shadow-2xl">
-
-          <!-- Icon -->
-          <div class="flex justify-center mb-3">
-            <div class="flex items-center justify-center h-14 w-14 rounded-full bg-red-600/20 border-2 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.6)]">
-              <span class="text-2xl leading-none">⚠️</span>
-            </div>
+        <!-- Add panel -->
+        <div class="vl-add-panel">
+          <div class="vl-add-row">
+            <span id="reagentSelectedLabel" class="vl-selected-label">No reagent selected</span>
           </div>
-
-          <!-- Title -->
-          <h2 class="text-center text-[15px] font-extrabold tracking-[0.1em] text-red-400 uppercase mb-1.5">
-            Hazard Intercept System Active
-          </h2>
-
-          <p class="text-center text-[10px] font-semibold text-red-300/70 uppercase tracking-wider mb-4">
-            Simulation paused · Awaiting operator authorisation
-          </p>
-
-          <!-- Description -->
-          <p data-role="hazard-desc"
-             class="text-center text-[12px] text-slate-300 leading-relaxed mb-3">
-            A potentially dangerous reaction has been detected.
-          </p>
-
-          <!-- Detail block -->
-          <div data-role="hazard-detail"
-               class="rounded-lg bg-slate-950/80 border border-red-500/30 p-3 mb-4 text-[11px]">
-            <div class="hazard-row flex items-center justify-between py-1 border-b border-slate-800/70 last:border-0">
-              <span class="text-slate-500 font-semibold">Reagent</span>
-              <strong class="text-slate-200">—</strong>
-            </div>
-            <div class="hazard-row flex items-center justify-between py-1 border-b border-slate-800/70 last:border-0">
-              <span class="text-slate-500 font-semibold">Formula</span>
-              <strong class="text-slate-200">—</strong>
-            </div>
-            <div class="hazard-row flex items-center justify-between py-1 border-b border-slate-800/70 last:border-0">
-              <span class="text-slate-500 font-semibold">Quantity</span>
-              <strong class="text-slate-200">—</strong>
-            </div>
-            <div class="hazard-row flex items-center justify-between py-1 last:border-0">
-              <span class="text-slate-500 font-semibold">Risk Class</span>
-              <strong class="hazard-risk text-red-400">Explosive</strong>
-            </div>
-          </div>
-
-          <!-- Action buttons -->
-          <div class="flex flex-col gap-2">
-            <button type="button"
-                    id="confirmHazardBtn"
-                    data-hazard="allow"
-                    class="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 active:scale-[0.98] text-white font-extrabold text-[12px] tracking-[0.08em] uppercase py-3 px-4 rounded-lg shadow-lg transition-all cursor-pointer border border-red-400/40">
-              ⚠️ ALLOW &amp; EXECUTE
+          <div class="vl-add-row vl-add-inputs">
+            <input id="reagentAmount"
+                   type="number"
+                   class="vl-input text-slate-100 bg-slate-800"
+                   value="1"
+                   min="0.01"
+                   step="0.5"
+                   aria-label="Quantity to add">
+            <span id="reagentUnitBadge" class="vl-unit-badge" data-unit="g">g</span>
+            <button id="reagentAddBtn" type="button" class="vl-btn vl-btn-primary" disabled>
+              Add to Vessel
             </button>
-
-            <button type="button"
-                    id="cancelHazardBtn"
-                    data-hazard="cancel"
-                    class="w-full bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-white font-extrabold text-[12px] tracking-[0.08em] uppercase py-3 px-4 rounded-lg shadow-lg transition-all cursor-pointer border border-slate-500/40">
-              🛑 CANCEL &amp; ABORT
+            <button id="reagentSetTitrantBtn" type="button" class="vl-btn vl-btn-ghost">
+              Set as Titrant
             </button>
           </div>
-
-          <!-- Safety footer -->
-          <p class="mt-3 text-center text-[9px] text-slate-500 leading-snug">
-            Allowing will trigger a full detonation sequence with blast FX, smoke, screen shake, and audio.
-          </p>
         </div>
+
       </div>
     </div>
-
-    <!-- ======================================================================
-         AI LAB TUTOR DRAWER
-         ====================================================================== -->
-    <aside id="aiTutorDrawer"
-           data-role="ai-tutor"
-           aria-hidden="true"
-           class="closed absolute top-0 right-0 h-full w-[78%] z-40 flex flex-col bg-slate-950/95 backdrop-blur-md border-l-2 border-indigo-500/50 shadow-2xl rounded-r-xl overflow-hidden">
-
-      <!-- Drawer header -->
-      <div class="flex-none flex items-center justify-between px-3 py-2.5 border-b border-slate-800 bg-slate-900/80">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="flex items-center justify-center h-7 w-7 rounded-lg bg-indigo-600/25 border border-indigo-500/50 text-[13px] leading-none">
-            🤖
-          </span>
-          <div class="flex flex-col leading-tight min-w-0">
-            <h2 class="text-[11px] font-extrabold tracking-[0.12em] text-indigo-200 uppercase truncate">
-              AI Lab Tutor
-            </h2>
-            <span class="text-[8px] font-semibold text-slate-500 uppercase tracking-wider">
-              Mechanism · Electron Transfer · Enthalpy
-            </span>
-          </div>
-        </div>
-
-        <button type="button"
-                id="closeTutorBtn"
-                data-action="toggle-tutor"
-                class="flex-none bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white font-extrabold text-[10px] tracking-wider uppercase py-1.5 px-2.5 rounded-lg transition-all cursor-pointer border border-slate-600/50">
-          ✕
-        </button>
-      </div>
-
-      <!-- Drawer body -->
-      <div id="aiTutorBody"
-           data-role="ai-tutor-body"
-           class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 text-[11px] leading-relaxed text-slate-300">
-        <!-- Populated at runtime by app.js -->
-        <div class="tutor-section">
-          <h3 class="text-[12px] font-extrabold text-indigo-300 uppercase tracking-wider mb-1.5">
-            🔬 Awaiting Reaction
-          </h3>
-          <p class="text-slate-400">
-            Add reagents or run a reaction to receive a full educational breakdown of the mechanism,
-            electron transfer, and enthalpy driving forces.
-          </p>
-        </div>
-      </div>
-
-      <!-- Drawer footer -->
-      <div class="flex-none px-3 py-2 border-t border-slate-800 bg-slate-900/80">
-        <p class="text-[8px] text-slate-600 leading-snug text-center">
-          Educational guidance only. Always follow institutional safety protocols.
-        </p>
-      </div>
-    </aside>
 
   </section>
 </div>
 
 <!-- ==========================================================================
-     INLINE TUTOR STYLES (app.js injects markup using these classes)
-     ========================================================================== -->
-<style>
-  .tutor-section {
-    padding: 10px 0;
-    border-bottom: 1px solid rgba(30, 41, 59, 0.7);
-  }
-  .tutor-section:last-child {
-    border-bottom: none;
-  }
-  .tutor-heading {
-    font-size: 12px;
-    font-weight: 800;
-    color: #a5b4fc;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-  }
-  .tutor-sub {
-    font-size: 9px;
-    font-weight: 800;
-    color: #64748b;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-  }
-  .tutor-para {
-    font-size: 11px;
-    line-height: 1.55;
-    color: #cbd5e1;
-  }
-  .tutor-para code {
-    display: inline-block;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10.5px;
-    font-weight: 700;
-    color: #7dd3fc;
-    background: rgba(2, 6, 23, 0.7);
-    border: 1px solid rgba(30, 41, 59, 0.9);
-    border-radius: 5px;
-    padding: 2px 6px;
-    margin-top: 3px;
-  }
-  .tutor-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .tutor-list li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    background: rgba(2, 6, 23, 0.55);
-    border: 1px solid rgba(30, 41, 59, 0.8);
-  }
-  .tutor-list li span {
-    font-size: 9px;
-    font-weight: 700;
-    color: #64748b;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-  .tutor-list li strong {
-    font-size: 11px;
-    font-weight: 700;
-    color: #e2e8f0;
-    font-variant-numeric: tabular-nums;
-  }
-  .tutor-data {
-    background: rgba(79, 70, 229, 0.06);
-    border-radius: 8px;
-    padding: 10px;
-    border: 1px solid rgba(79, 70, 229, 0.2);
-  }
-</style>
-
-<!-- ==========================================================================
-     JAVASCRIPT MODULES — CORRECT EXECUTION ORDER
-     ========================================================================== -->
+     MODULE IMPORTS — EXACT ORDER MATTERS
+     chemicals.js  →  engine.js  →  canvas.js  →  app.js
+     ======================================================================= -->
 <script src="chemicals.js"></script>
 <script src="engine.js"></script>
 <script src="canvas.js"></script>
 <script src="app.js"></script>
 
 <!-- ==========================================================================
-     INLINE BOOTSTRAP FALLBACKS (non-invasive; app.js owns primary logic)
-     ========================================================================== -->
+     OPTIONAL UI GLUE
+     --------------------------------------------------------------------------
+     Mirrors the header "Reagents" button onto the mandated #openReagentModalBtn,
+     wires the quick-preset chips, and adds a few ergonomic shortcuts.
+     Nothing here is required by the four modules; it degrades silently.
+     ======================================================================= -->
 <script>
-  (function () {
-    'use strict';
+(function () {
+  "use strict";
 
-    /* Clear-log button: keeps terminal tidy without touching app.js state. */
-    document.addEventListener('DOMContentLoaded', function () {
-      var clearBtn = document.getElementById('clearLogBtn');
-      var terminal = document.getElementById('logTerminal');
-      if (clearBtn && terminal) {
-        clearBtn.addEventListener('click', function () {
-          while (terminal.firstChild) terminal.removeChild(terminal.firstChild);
-          var line = document.createElement('div');
-          line.className = 'log-line log-system';
-          line.innerHTML =
-            '<span class="log-ts">' + new Date().toTimeString().slice(0, 8) + ' </span>' +
-            '<span class="log-tag">[SYSTEM] </span>' +
-            '<span class="log-msg">Log terminal cleared by operator.</span>';
-          terminal.appendChild(line);
-        });
+  function ready(fn) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", fn);
+    } else {
+      fn();
+    }
+  }
+
+  ready(function () {
+    /* ------------------------------------------------------------------
+       1. Mirror button — top-right "Reagents" opens the same modal
+       ------------------------------------------------------------------ */
+    var mirror = document.getElementById("openReagentModalBtnTop");
+    var primary = document.getElementById("openReagentModalBtn");
+    if (mirror && primary) {
+      mirror.addEventListener("click", function (e) {
+        e.preventDefault();
+        primary.click();
+      });
+    }
+
+    /* ------------------------------------------------------------------
+       2. Preset chips
+       ------------------------------------------------------------------ */
+    function app() { return window.__virtuaLabApp || null; }
+
+    function add(id, amount, unit) {
+      var a = app();
+      if (!a) return false;
+      a._dispatchAdd(id, amount, unit);
+      return true;
+    }
+
+    var PRESETS = {
+      "nacl":  function () { add("NaCl", 5, "g"); },
+      "hcl":   function () { add("HCl", 25, "mL"); },
+      "naoh":  function () { add("NaOH", 4, "g"); },
+      "cuso4": function () { add("CuSO4_5H2O", 6, "g"); },
+      "agno3": function () { add("AgNO3", 3, "g"); },
+      "ki":    function () { add("KI", 4, "g"); },
+      "caco3": function () { add("CaCO3", 5, "g"); },
+      "kmno4": function () { add("KMnO4", 1.5, "g"); },
+
+      "sodium-water": function () {
+        var a = app();
+        if (!a) return;
+        /* Ensure there is water first, then drop the metal in. */
+        if (!(a.engine.vessel.waterVolume > 0)) {
+          a.engine.addWater(150);
+        }
+        add("Na", 0.6, "g");
+        add("Phenolphthalein", 0.5, "mL");
+      },
+
+      "thermite": function () {
+        var a = app();
+        if (!a) return;
+        /* Magnesium ribbon burning in pure oxygen. */
+        add("Mg", 1.2, "g");
+        a.engine.vessel.gases.O2 = (a.engine.vessel.gases.O2 || 0) + 0.25;
+        a.engine.setFlame(1.0);
+        var fs = document.getElementById("flameSlider");
+        if (fs) fs.value = "100";
+        a._log("system", "O₂ injected — ignition imminent.");
+        a._syncTelemetry();
       }
+    };
 
-      /* Search input clear affordance for the reagent modal. */
-      var searchInput = document.getElementById('reagentSearchInput');
-      var searchClear = document.getElementById('reagentSearchClear');
-      if (searchInput && searchClear) {
-        var syncClear = function () {
-          if (searchInput.value && searchInput.value.length > 0) {
-            searchClear.classList.remove('hidden');
-          } else {
-            searchClear.classList.add('hidden');
+    var chips = document.querySelectorAll(".vl-chip[data-preset]");
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].addEventListener("click", function (e) {
+        e.preventDefault();
+        var key = this.getAttribute("data-preset");
+        var a = app();
+        if (!a) return;
+        a.audio.click(940);
+        if (PRESETS[key]) {
+          PRESETS[key]();
+          a._log("action", "Preset loaded: " + key.replace(/-/g, " "));
+        }
+      });
+    }
+
+    /* ------------------------------------------------------------------
+       3. Keyboard shortcuts
+          [R] reagents   [Space] stir   [C] clear
+       ------------------------------------------------------------------ */
+    document.addEventListener("keydown", function (e) {
+      var tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      var a = app();
+      if (!a) return;
+
+      var modal = document.getElementById("reagentModal");
+      var modalOpen = modal && !modal.classList.contains("hidden");
+
+      switch (e.key.toLowerCase()) {
+        case "r":
+          if (!modalOpen && primary) { e.preventDefault(); primary.click(); }
+          break;
+        case "c":
+          if (!modalOpen) {
+            var clear = document.getElementById("clearVesselBtn");
+            if (clear) { e.preventDefault(); clear.click(); }
           }
-        };
-        searchInput.addEventListener('input', syncClear);
-        searchClear.addEventListener('click', function () {
-          searchInput.value = '';
-          syncClear();
-          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-          searchInput.focus();
-        });
-        syncClear();
-      }
-
-      /* Keep the reagent modal display state consistent with app.js toggles. */
-      var reagentModal = document.getElementById('reagentModal');
-      if (reagentModal) {
-        var observer = new MutationObserver(function () {
-          var isHidden = reagentModal.classList.contains('hidden');
-          reagentModal.setAttribute('aria-hidden', isHidden ? 'true' : 'false');
-        });
-        observer.observe(reagentModal, { attributes: true, attributeFilter: ['class'] });
-      }
-
-      /* Mirror hazard modal aria state. */
-      var hazardModal = document.getElementById('hazardModal');
-      if (hazardModal) {
-        var hazardObserver = new MutationObserver(function () {
-          var isHidden = hazardModal.classList.contains('hidden');
-          hazardModal.setAttribute('aria-hidden', isHidden ? 'true' : 'false');
-          var badge = document.getElementById('canvasHazardBadge');
-          if (badge) {
-            if (isHidden) badge.classList.add('hidden');
-            else badge.classList.remove('hidden');
+          break;
+        case " ":
+          if (!modalOpen) {
+            var stir = document.getElementById("stirBtn");
+            if (stir) { e.preventDefault(); stir.click(); }
           }
-        });
-        hazardObserver.observe(hazardModal, { attributes: true, attributeFilter: ['class'] });
-      }
-
-      /* Mirror AI tutor aria state. */
-      var tutorDrawer = document.getElementById('aiTutorDrawer');
-      if (tutorDrawer) {
-        var tutorObserver = new MutationObserver(function () {
-          var isOpen = tutorDrawer.classList.contains('open');
-          tutorDrawer.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
-          var toggle = document.getElementById('aiTutorToggleBtn');
-          if (toggle) toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-        tutorObserver.observe(tutorDrawer, { attributes: true, attributeFilter: ['class'] });
-      }
-
-      /* Prevent accidental number-input wheel scrolling. */
-      var waterInput = document.getElementById('waterInput');
-      if (waterInput) {
-        waterInput.addEventListener('wheel', function (e) {
-          if (document.activeElement === waterInput) e.preventDefault();
-        }, { passive: false });
+          break;
+        default:
+          break;
       }
     });
-  })();
+
+    /* ------------------------------------------------------------------
+       4. Guard the layout: keep the two columns locked at 50/50
+          even if a rogue stylesheet tries to wrap them.
+       ------------------------------------------------------------------ */
+    var root = document.getElementById("appRoot");
+    var left = document.getElementById("workbenchColumn");
+    var right = document.getElementById("controlColumn");
+
+    function lockLayout() {
+      if (!root || !left || !right) return;
+      root.style.display = "flex";
+      root.style.flexDirection = "row";
+      root.style.flexWrap = "nowrap";
+
+      [left, right].forEach(function (col) {
+        col.style.flex = "1 1 0%";
+        col.style.width = "50%";
+        col.style.maxWidth = "50%";
+        col.style.minWidth = "0";
+        col.style.height = "100%";
+      });
+    }
+
+    lockLayout();
+    window.addEventListener("resize", lockLayout);
+
+    /* Re-lock shortly after boot in case the renderer resized the canvas. */
+    setTimeout(lockLayout, 120);
+    setTimeout(lockLayout, 600);
+  });
+})();
 </script>
 
 </body>
