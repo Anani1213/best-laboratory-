@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VirtuaLab Pro — Virtual Chemistry Workbench</title>
+
+<!-- Tailwind CSS via CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Tailwind Runtime Config -->
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace']
+        },
+        keyframes: {
+          pulseGlow: {
+            '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0 rgba(56,189,248,0.45)' },
+            '50%': { opacity: '0.85', boxShadow: '0 0 0 8px rgba(56,189,248,0)' }
+          },
+          slideInRight: {
+            '0%': { transform: 'translateX(100%)' },
+            '100%': { transform: 'translateX(0)' }
+          },
+          hazardFlash: {
+            '0%, 100%': { backgroundColor: 'rgba(127,29,29,0.92)' },
+            '50%': { backgroundColor: 'rgba(153,27,27,0.72)' }
+          }
+        },
+        animation: {
+          pulseGlow: 'pulseGlow 2.2s ease-in-out infinite',
+          slideInRight: 'slideInRight 0.28s ease-out',
+          hazardFlash: 'hazardFlash 1.1s ease-in-out infinite'
+        }
+      }
+    }
+  };
+</script>
+
+<!-- Custom Global + Scrollbar Styling -->
+<style>
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background-color: #020617;
+  }
+
+  /* ---------- Custom Scrollbars ---------- */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0b1220;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #0b1220;
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #334155, #1e293b);
+    border-radius: 9999px;
+    border: 1px solid #0f172a;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #475569, #334155);
+  }
+  .custom-scrollbar::-webkit-scrollbar-corner {
+    background: #0b1220;
+  }
+
+  /* ---------- Range Slider Styling ---------- */
+  input[type="range"].lab-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 9999px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"].lab-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #e2e8f0;
+    border: 2px solid #6366f1;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.75);
+    transition: transform 0.12s ease;
+  }
+  input[type="range"].lab-range::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+  }
+  input[type="range"].lab-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #e2e8f0;
+    border: 2px solid #6366f1;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.75);
+  }
+  input[type="range"].lab-range:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* ---------- Number Input Spinner Cleanup ---------- */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* ---------- pH Spectrum Track ---------- */
+  #phMeterBar {
+    background: linear-gradient(
+      90deg,
+      #dc2626 0%,
+      #ea580c 14%,
+      #f59e0b 28%,
+      #facc15 42%,
+      #84cc16 50%,
+      #22c55e 57%,
+      #06b6d4 71%,
+      #3b82f6 85%,
+      #8b5cf6 100%
+    );
+  }
+
+  /* ---------- Log Terminal Line Styling ---------- */
+  #logTerminal .log-line {
+    border-left: 2px solid #1e293b;
+    padding-left: 8px;
+    margin-bottom: 4px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+  #logTerminal .log-line.log-info { border-left-color: #38bdf8; }
+  #logTerminal .log-line.log-success { border-left-color: #22c55e; }
+  #logTerminal .log-line.log-warn { border-left-color: #f59e0b; }
+  #logTerminal .log-line.log-danger { border-left-color: #ef4444; }
+  #logTerminal .log-line.log-react { border-left-color: #a855f7; }
+
+  /* ---------- Category Tab Active State ---------- */
+  .category-tab.active {
+    background: linear-gradient(90deg, #4f46e5, #6366f1);
+    color: #ffffff;
+    border-color: #818cf8;
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.55);
+  }
+
+  /* ---------- Canvas Cursor ---------- */
+  #labCanvas {
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  /* ---------- Hidden Utility (safety fallback) ---------- */
+  .is-hidden {
+    display: none !important;
+  }
+</style>
+</head>
+
+<body class="h-full w-full overflow-hidden bg-slate-950">
+
+<!-- ============================================================
+     MAIN WORKBENCH CONTAINER — 2 COLUMN / 100vh LOCK
+     ============================================================ -->
+<div class="flex flex-row w-full h-screen max-h-screen overflow-hidden p-2 gap-3 bg-slate-950 font-sans text-slate-100">
+
+  <!-- ============================================================
+       LEFT COLUMN — THE WORKBENCH STAGE (50%)
+       ============================================================ -->
+  <section class="w-1/2 flex flex-col gap-2 h-full">
+
+    <!-- ------------------------------------------------------------
+         TOP PANEL — APPARATUS CANVAS STAGE
+         ------------------------------------------------------------ -->
+    <div class="h-[260px] flex-none relative bg-slate-900/90 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
+
+      <canvas id="labCanvas" class="w-full h-full block"></canvas>
+
+      <!-- Floating Status Chip: Current Temperature -->
+      <div class="absolute top-2 left-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950/80 backdrop-blur-md border border-orange-500/40 shadow-lg pointer-events-none">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-orange-400">🌡️ Temp</span>
+        <span class="font-mono text-sm font-bold text-orange-200">
+          <span id="tempDisplay">25.0</span><span class="text-orange-400/80 text-xs">°C</span>
+        </span>
+      </div>
+
+      <!-- Floating Status Chip: Ambient Indicator -->
+      <div class="absolute top-2 right-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950/80 backdrop-blur-md border border-cyan-500/40 shadow-lg pointer-events-none">
+        <span id="ambientDot" class="w-2 h-2 rounded-full bg-cyan-400 animate-pulseGlow"></span>
+        <span class="text-[10px] font-bold uppercase tracking-wider text-cyan-400">Ambient</span>
+        <span id="ambientIndicator" class="font-mono text-xs font-semibold text-cyan-200">STP 1 atm</span>
+      </div>
+
+      <!-- Floating Status Chip: Vessel State -->
+      <div class="absolute bottom-2 left-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950/80 backdrop-blur-md border border-slate-700 shadow-lg pointer-events-none">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Vessel</span>
+        <span id="vesselStateChip" class="font-mono text-xs font-semibold text-emerald-300">IDLE</span>
+      </div>
+
+      <!-- Floating Controls: AI Tutor Toggle -->
+      <button
+        id="aiTutorToggleBtn"
+        type="button"
+        class="absolute bottom-2 right-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-[11px] font-bold uppercase tracking-wider border border-indigo-400/50 shadow-lg transition-colors cursor-pointer"
+      >
+        <span>🤖</span>
+        <span>AI Tutor</span>
+      </button>
+
+    </div>
+
+    <!-- ------------------------------------------------------------
+         MIDDLE PANEL — LIVE REACTION & PHYSICAL STATE BANNER
+         ------------------------------------------------------------ -->
+    <div class="flex-none bg-slate-900 border border-indigo-500/40 rounded-xl p-3 shadow-lg">
+
+      <!-- Live Stoichiometric Formula -->
+      <div class="mb-2.5">
+        <div class="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1">
+          Live Stoichiometric Equation
+        </div>
+        <div
+          id="formulaBanner"
+          class="font-mono text-[13px] leading-snug text-slate-100 bg-slate-950/70 rounded-lg border border-slate-800 px-3 py-2 min-h-[42px] flex items-center overflow-x-auto custom-scrollbar whitespace-nowrap"
+        >
+          <span class="text-slate-500 italic">No reaction in progress — add reagents to the vessel.</span>
+        </div>
+      </div>
+
+      <!-- Active Physical Species -->
+      <div class="mb-2.5">
+        <div class="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1">
+          Active Physical Species
+        </div>
+        <div id="activeSpeciesList" class="flex flex-wrap gap-1.5 min-h-[26px] items-center">
+          <span class="text-[11px] text-slate-500 italic font-mono">— empty vessel —</span>
+        </div>
+      </div>
+
+      <!-- Precision pH Meter -->
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-400">pH Meter</span>
+          <span class="font-mono text-xs font-bold text-emerald-300">
+            pH <span id="phValue">7.00</span>
+          </span>
+        </div>
+
+        <div class="relative">
+          <div id="phMeterBar" class="w-full h-3 rounded-full border border-slate-700/80 shadow-inner overflow-hidden"></div>
+
+          <!-- pH Marker Needle -->
+          <div
+            id="phMarker"
+            class="absolute -top-1 w-[3px] h-5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.9)] transition-all duration-300 pointer-events-none"
+            style="left: 50%; transform: translateX(-50%);"
+          ></div>
+        </div>
+
+        <div class="flex justify-between mt-1 font-mono text-[9px] text-slate-500 select-none">
+          <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+          <span class="text-slate-300 font-bold">7</span>
+          <span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ------------------------------------------------------------
+         BOTTOM PANEL — SYSTEM REACTION LOG TERMINAL
+         ------------------------------------------------------------ -->
+    <div class="flex-1 min-h-0 overflow-y-auto bg-slate-900/90 rounded-xl p-3 custom-scrollbar border border-slate-800 font-mono text-xs">
+
+      <div class="flex items-center justify-between mb-2 sticky top-0 bg-slate-900/95 backdrop-blur-sm pb-1.5 border-b border-slate-800 z-10">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-[10px] font-bold uppercase tracking-widest text-emerald-400">System Reaction Log</span>
+        </div>
+        <button
+          id="clearLogBtn"
+          type="button"
+          class="text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-200 transition-colors cursor-pointer"
+        >
+          [ clear ]
+        </button>
+      </div>
+
+      <div id="logTerminal" class="flex flex-col">
+        <div class="log-line log-info text-sky-300">
+          <span class="text-slate-500">[00:00:00]</span> VirtuaLab Pro kernel initialized.
+        </div>
+        <div class="log-line log-info text-sky-300">
+          <span class="text-slate-500">[00:00:00]</span> Apparatus canvas bound — ready for reagent injection.
+        </div>
+        <div class="log-line log-success text-emerald-300">
+          <span class="text-slate-500">[00:00:00]</span> Thermodynamic engine online. Awaiting operator input…
+        </div>
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       RIGHT COLUMN — CONTROLS & ANALYTICS TELEMETRY (50%)
+       ============================================================ -->
+  <section class="w-1/2 flex flex-col gap-2 h-full relative">
+
+    <!-- ------------------------------------------------------------
+         TOP TRIGGER BUTTON — OPEN REAGENT LIBRARY
+         ------------------------------------------------------------ -->
+    <button
+      id="openReagentModalBtn"
+      type="button"
+      class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between cursor-pointer transition-all duration-200 flex-none"
+    >
+      <span class="text-sm tracking-wide">[ ➕ OPEN REAGENT &amp; ELEMENT LIBRARY ]</span>
+      <span class="text-[10px] font-mono uppercase tracking-widest bg-black/25 px-2 py-1 rounded-md border border-white/20">
+        <span id="reagentCountBadge">0</span> reagents
+      </span>
+    </button>
+
+    <!-- ------------------------------------------------------------
+         MIDDLE PANEL — APPARATUS CONTROL DOCK
+         ------------------------------------------------------------ -->
+    <div class="flex-none bg-slate-900/90 rounded-xl p-3 border border-slate-800 flex flex-col gap-2">
+
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Apparatus Control Dock</span>
+        <span class="text-[9px] font-mono text-slate-500">MANUAL OVERRIDE</span>
+      </div>
+
+      <!-- Precision Sliders -->
+      <div class="grid grid-cols-2 gap-x-4 gap-y-2.5">
+
+        <!-- pH Spectrum -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="phSlider" class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              pH Spectrum
+            </label>
+            <span class="font-mono text-[11px] font-bold text-emerald-300">
+              <span id="phSliderValue">7.00</span>
+            </span>
+          </div>
+          <input
+            id="phSlider"
+            type="range"
+            min="0"
+            max="14"
+            step="0.01"
+            value="7"
+            class="lab-range"
+            style="background: linear-gradient(90deg, #dc2626, #f59e0b, #84cc16, #22c55e, #06b6d4, #3b82f6, #8b5cf6);"
+          />
+        </div>
+
+        <!-- Bunsen Flame Intensity -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="flameSlider" class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Bunsen Flame
+            </label>
+            <span class="font-mono text-[11px] font-bold text-orange-300">
+              <span id="flameSliderValue">0</span>%
+            </span>
+          </div>
+          <input
+            id="flameSlider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="0"
+            class="lab-range"
+            style="background: linear-gradient(90deg, #1e293b, #f97316, #facc15);"
+          />
+        </div>
+
+        <!-- Magnetic Stirrer RPM -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="stirrerSlider" class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Magnetic Stirrer
+            </label>
+            <span class="font-mono text-[11px] font-bold text-cyan-300">
+              <span id="stirrerSliderValue">0</span> rpm
+            </span>
+          </div>
+          <input
+            id="stirrerSlider"
+            type="range"
+            min="0"
+            max="1500"
+            step="10"
+            value="0"
+            class="lab-range"
+            style="background: linear-gradient(90deg, #1e293b, #0891b2, #22d3ee);"
+          />
+        </div>
+
+        <!-- Titration Drip Valve -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="dripSlider" class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Titration Drip
+            </label>
+            <span class="font-mono text-[11px] font-bold text-violet-300">
+              <span id="dripSliderValue">0.00</span> mL/s
+            </span>
+          </div>
+          <input
+            id="dripSlider"
+            type="range"
+            min="0"
+            max="10"
+            step="0.05"
+            value="0"
+            class="lab-range"
+            style="background: linear-gradient(90deg, #1e293b, #7c3aed, #c084fc);"
+          />
+        </div>
+
+      </div>
+
+      <!-- Action Buttons Row -->
+      <div class="grid grid-cols-4 gap-1.5 pt-1 border-t border-slate-800">
+
+        <button
+          id="clearVesselBtn"
+          type="button"
+          class="bg-rose-900/50 hover:bg-rose-800/70 border border-rose-600/50 text-rose-200 text-[10px] font-bold uppercase tracking-wider py-2 px-1 rounded-lg transition-colors cursor-pointer"
+        >
+          🗑️ Clear Vessel
+        </button>
+
+        <button
+          id="refillBtn"
+          type="button"
+          class="bg-emerald-900/50 hover:bg-emerald-800/70 border border-emerald-600/50 text-emerald-200 text-[10px] font-bold uppercase tracking-wider py-2 px-1 rounded-lg transition-colors cursor-pointer"
+        >
+          🔄 Refill
+        </button>
+
+        <button
+          id="stirPulseBtn"
+          type="button"
+          class="bg-cyan-900/50 hover:bg-cyan-800/70 border border-cyan-600/50 text-cyan-200 text-[10px] font-bold uppercase tracking-wider py-2 px-1 rounded-lg transition-colors cursor-pointer"
+        >
+          🌀 Stir Pulse
+        </button>
+
+        <button
+          id="flushBtn"
+          type="button"
+          class="bg-amber-900/50 hover:bg-amber-800/70 border border-amber-600/50 text-amber-200 text-[10px] font-bold uppercase tracking-wider py-2 px-1 rounded-lg transition-colors cursor-pointer"
+        >
+          🧹 Flush
+        </button>
+
+      </div>
+
+      <!-- Water Injection Row -->
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5 bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1.5 flex-1">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-sky-400">💧</span>
+          <input
+            id="waterInput"
+            type="number"
+            value="50"
+            min="1"
+            max="1000"
+            step="1"
+            class="w-full bg-transparent font-mono text-xs text-sky-200 outline-none border-none"
+          />
+          <span class="text-[10px] font-mono text-slate-500 whitespace-nowrap">mL H₂O</span>
+        </div>
+
+        <button
+          id="addWaterBtn"
+          type="button"
+          class="bg-sky-700 hover:bg-sky-600 border border-sky-500/60 text-white text-[10px] font-bold uppercase tracking-wider py-2 px-3 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+        >
+          + Add Water
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ------------------------------------------------------------
+         BOTTOM PANEL — THERMODYNAMICS & ANALYTICAL TELEMETRY
+         ------------------------------------------------------------ -->
+    <div class="flex-1 min-h-0 overflow-y-auto bg-slate-900/90 rounded-xl p-3 custom-scrollbar border border-slate-800">
+
+      <div class="flex items-center justify-between mb-2 sticky top-0 bg-slate-900/95 backdrop-blur-sm pb-1.5 border-b border-slate-800 z-10">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-400">
+          Thermodynamics &amp; Analytical Telemetry
+        </span>
+        <span class="text-[9px] font-mono text-slate-500">REAL-TIME</span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+
+        <!-- Total Mass -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">Total Mass</div>
+          <div class="font-mono text-sm text-cyan-300 font-bold">
+            <span id="metricMass">0.000</span>
+            <span class="text-slate-500 text-[10px] font-normal">g</span>
+          </div>
+        </div>
+
+        <!-- Total Volume -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">Total Volume</div>
+          <div class="font-mono text-sm text-sky-300 font-bold">
+            <span id="metricVolume">0.0</span>
+            <span class="text-slate-500 text-[10px] font-normal">mL</span>
+          </div>
+        </div>
+
+        <!-- Molarity -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">
+            Molarity <span class="text-slate-600">(M = n/V)</span>
+          </div>
+          <div class="font-mono text-sm text-emerald-300 font-bold">
+            <span id="metricMolarity">0.0000</span>
+            <span class="text-slate-500 text-[10px] font-normal">M</span>
+          </div>
+        </div>
+
+        <!-- Heat Exchange -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">
+            Heat Exchange <span class="text-slate-600">(q = mcΔT)</span>
+          </div>
+          <div class="font-mono text-sm text-orange-300 font-bold">
+            <span id="metricHeat">0.00</span>
+            <span class="text-slate-500 text-[10px] font-normal">J</span>
+          </div>
+        </div>
+
+        <!-- Enthalpy -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">
+            Enthalpy Change <span class="text-slate-600">(ΔH)</span>
+          </div>
+          <div class="font-mono text-sm text-rose-300 font-bold">
+            <span id="metricEnthalpy">0.00</span>
+            <span class="text-slate-500 text-[10px] font-normal">kJ/mol</span>
+          </div>
+        </div>
+
+        <!-- Gas STP Volume -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-0.5">
+            Gas STP <span class="text-slate-600">(V = n × 22.4 L)</span>
+          </div>
+          <div class="font-mono text-sm text-violet-300 font-bold">
+            <span id="metricGasVolume">0.000</span>
+            <span class="text-slate-500 text-[10px] font-normal">L</span>
+          </div>
+        </div>
+
+        <!-- Active Ion Species -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2 col-span-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-1">Active Ion Species</div>
+          <div id="metricIons" class="flex flex-wrap gap-1 min-h-[20px] items-center">
+            <span class="text-[11px] text-slate-600 italic font-mono">none</span>
+          </div>
+        </div>
+
+        <!-- Stoichiometry -->
+        <div class="bg-slate-950/60 rounded-lg border border-slate-800 p-2 col-span-2">
+          <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-1">Stoichiometry Summary</div>
+          <div id="metricStoich" class="font-mono text-[11px] text-slate-300 leading-relaxed">
+            <span class="text-slate-600 italic">No balanced equation resolved.</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Reaction Progress Bar -->
+      <div class="mt-2.5">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Reaction Extent (ξ)</span>
+          <span class="font-mono text-[10px] text-indigo-300 font-bold">
+            <span id="reactionExtentValue">0.0</span>%
+          </span>
+        </div>
+        <div class="w-full h-2 bg-slate-950 rounded-full border border-slate-800 overflow-hidden">
+          <div
+            id="reactionExtentBar"
+            class="h-full w-0 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 transition-all duration-500 rounded-full"
+          ></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================
+         REAGENT LIBRARY OVERLAY MODAL (inside right column)
+         ============================================================ -->
+    <div
+      id="reagentModal"
+      class="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-md rounded-xl p-4 flex flex-col border border-indigo-500/30 shadow-2xl hidden"
+    >
+
+      <!-- Header Bar -->
+      <div class="flex-none flex items-center justify-between mb-3 pb-2.5 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🧪</span>
+          <h2 class="text-sm font-bold uppercase tracking-widest text-indigo-300">
+            Reagent &amp; Element Library
+          </h2>
+        </div>
+        <button
+          id="closeReagentModalBtn"
+          type="button"
+          class="bg-rose-900/60 hover:bg-rose-800 border border-rose-500/50 text-rose-200 text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 rounded-lg transition-colors cursor-pointer"
+        >
+          [ ❌ CLOSE ]
+        </button>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="flex-none mb-2.5">
+        <div class="flex items-center gap-2 bg-slate-900 border border-slate-700 focus-within:border-indigo-500 rounded-lg px-3 py-2 transition-colors">
+          <span class="text-slate-500 text-sm">🔍</span>
+          <input
+            id="reagentSearchInput"
+            type="text"
+            placeholder="Search by name, formula, or symbol…"
+            class="w-full bg-transparent outline-none border-none text-xs font-mono text-slate-100 placeholder-slate-600"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div id="categoryTabs" class="flex-none flex flex-wrap gap-1.5 mb-3">
+        <button type="button" data-category="all" class="category-tab active text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">All</button>
+        <button type="button" data-category="elements" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Elements</button>
+        <button type="button" data-category="metals" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Metals</button>
+        <button type="button" data-category="nonmetals" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Non-Metals</button>
+        <button type="button" data-category="basic-oxides" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Basic Oxides</button>
+        <button type="button" data-category="acidic-oxides" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Acidic Oxides</button>
+        <button type="button" data-category="amphoteric-oxides" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Amphoteric Oxides</button>
+        <button type="button" data-category="neutral-oxides" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Neutral Oxides</button>
+        <button type="button" data-category="acids" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Acids</button>
+        <button type="button" data-category="bases" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Bases</button>
+        <button type="button" data-category="salts" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Salts</button>
+        <button type="button" data-category="solvents" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Solvents</button>
+        <button type="button" data-category="indicators" class="category-tab text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer">Indicators</button>
+      </div>
+
+      <!-- Scrollable Item Grid -->
+      <div id="reagentListContainer" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col gap-1 pr-1">
+        <div class="flex items-center justify-center h-full text-slate-600 text-xs font-mono italic">
+          Loading reagent database…
+        </div>
+      </div>
+
+      <!-- Footer Hint -->
+      <div class="flex-none mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between">
+        <span class="text-[9px] font-mono text-slate-600">
+          Click any reagent card to inject into the vessel.
+        </span>
+        <span class="text-[9px] font-mono text-slate-600">
+          ESC to close
+        </span>
+      </div>
+
+    </div>
+
+  </section>
+
+</div>
+
+<!-- ============================================================
+     HAZARD INTERCEPT SAFETY MODAL (Centered Over Screen)
+     ============================================================ -->
+<div
+  id="hazardModal"
+  class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4"
+>
+  <div class="w-full max-w-lg bg-slate-900 border-2 border-rose-600/70 rounded-2xl shadow-2xl overflow-hidden animate-hazardFlash">
+
+    <!-- Hazard Header -->
+    <div class="bg-rose-950/80 border-b-2 border-rose-600/60 px-5 py-4 flex items-center gap-3">
+      <span class="text-2xl">⚠️</span>
+      <div>
+        <h2 class="text-base font-black uppercase tracking-widest text-rose-200">
+          Hazard Intercept System Active
+        </h2>
+        <p class="text-[10px] font-mono text-rose-400/90 uppercase tracking-wider mt-0.5">
+          Runaway reaction detected — operator authorization required
+        </p>
+      </div>
+    </div>
+
+    <!-- Hazard Body -->
+    <div class="px-5 py-4 flex flex-col gap-3">
+
+      <!-- Reaction Summary -->
+      <div>
+        <div class="text-[10px] font-bold uppercase tracking-widest text-rose-400 mb-1">
+          Reaction Summary
+        </div>
+        <div
+          id="hazardReactionSummary"
+          class="font-mono text-xs text-slate-200 bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2.5 leading-relaxed"
+        >
+          <span class="text-slate-500 italic">Awaiting hazard analysis…</span>
+        </div>
+      </div>
+
+      <!-- Danger Classification -->
+      <div class="grid grid-cols-2 gap-2">
+        <div class="bg-slate-950/70 border border-slate-800 rounded-lg px-3 py-2">
+          <div class="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Danger Class</div>
+          <div id="hazardDangerClass" class="font-mono text-xs font-bold text-rose-300">
+            UNCLASSIFIED
+          </div>
+        </div>
+        <div class="bg-slate-950/70 border border-slate-800 rounded-lg px-3 py-2">
+          <div class="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Hazard Score</div>
+          <div class="font-mono text-xs font-bold text-amber-300">
+            <span id="hazardScoreValue">0</span> / 10
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning List -->
+      <ul id="hazardWarningList" class="text-[11px] font-mono text-amber-200/90 bg-amber-950/25 border border-amber-600/30 rounded-lg px-3 py-2 flex flex-col gap-1 list-none">
+        <li>• Thermal runaway potential detected.</li>
+        <li>• Rapid gas evolution / pressurization risk.</li>
+        <li>• Exothermic spike may exceed safe vessel limits.</li>
+      </ul>
+
+      <!-- Advisory -->
+      <p class="text-[10px] font-mono text-slate-500 leading-relaxed">
+        Proceeding will simulate the reaction under controlled laboratory conditions. VirtuaLab Pro
+        applies virtual safety shielding; no physical risk is present. Choose an action below.
+      </p>
+
+      <!-- Action Buttons -->
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button
+          id="confirmHazardBtn"
+          type="button"
+          class="bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white text-[11px] font-black uppercase tracking-wider py-3 px-3 rounded-xl shadow-lg transition-colors cursor-pointer"
+        >
+          ⚠️ Allow &amp; Execute
+        </button>
+        <button
+          id="cancelHazardBtn"
+          type="button"
+          class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-[11px] font-black uppercase tracking-wider py-3 px-3 rounded-xl shadow-lg transition-colors cursor-pointer"
+        >
+          🛑 Cancel &amp; Abort
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     AI TUTOR DRAWER (Sliding Side Panel)
+     ============================================================ -->
+<aside
+  id="aiTutorDrawer"
+  class="fixed top-0 right-0 h-full w-[380px] max-w-[92vw] z-[70] bg-slate-900/98 backdrop-blur-xl border-l-2 border-indigo-500/40 shadow-2xl flex flex-col translate-x-full transition-transform duration-300 ease-out"
+>
+
+  <!-- Drawer Header -->
+  <div class="flex-none flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-gradient-to-r from-indigo-950/70 to-slate-900">
+    <div class="flex items-center gap-2">
+      <span class="text-lg">🤖</span>
+      <div>
+        <h2 class="text-xs font-black uppercase tracking-widest text-indigo-300">
+          AI Tutor
+        </h2>
+        <p class="text-[9px] font-mono text-slate-500 uppercase tracking-wider">
+          Reaction Explanation Engine
+        </p>
+      </div>
+    </div>
+    <button
+      id="closeAiTutorBtn"
+      type="button"
+      class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-wider py-1.5 px-2.5 rounded-lg transition-colors cursor-pointer"
+    >
+      ✕
+    </button>
+  </div>
+
+  <!-- Drawer Body -->
+  <div id="aiTutorContent" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-4 flex flex-col gap-3 text-xs text-slate-300 leading-relaxed">
+
+    <div class="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3">
+      <div class="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1">
+        Welcome, Operator
+      </div>
+      <p class="text-[11px] text-slate-400">
+        Add reagents to the vessel and the AI Tutor will break down the observed reaction —
+        including driving forces, oxidation states, energy changes, and product formation.
+      </p>
+    </div>
+
+    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+      <div class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
+        Current Analysis
+      </div>
+      <p id="aiTutorAnalysis" class="text-[11px] text-slate-400 italic">
+        No active reaction to analyze.
+      </p>
+    </div>
+
+    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+      <div class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+        Key Concepts
+      </div>
+      <div id="aiTutorConcepts" class="flex flex-wrap gap-1.5">
+        <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 border border-slate-700">awaiting data</span>
+      </div>
+    </div>
+
+    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+      <div class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+        Step-by-Step Breakdown
+      </div>
+      <ol id="aiTutorSteps" class="flex flex-col gap-1.5 text-[11px] text-slate-400 list-none pl-0">
+        <li class="text-slate-600 italic">No steps available yet.</li>
+      </ol>
+    </div>
+
+    <div class="bg-amber-950/25 border border-amber-600/30 rounded-xl p-3">
+      <div class="text-[10px] font-bold uppercase tracking-widest text-amber-400 mb-1">
+        Safety Note
+      </div>
+      <p class="text-[11px] text-amber-200/80">
+        Always review hazard classifications before executing strongly exothermic or
+        gas-evolving reactions in a real laboratory setting.
+      </p>
+    </div>
+
+  </div>
+
+  <!-- Drawer Footer -->
+  <div class="flex-none px-4 py-2.5 border-t border-slate-800 bg-slate-950/60">
+    <span class="text-[9px] font-mono text-slate-600">
+      VirtuaLab Pro · AI Tutor v1.0 · Educational simulation only
+    </span>
+  </div>
+
+</aside>
+
+<!-- ============================================================
+     SCRIPT MODULES — EXECUTION ORDER MATTERS
+     ============================================================ -->
+<script src="chemicals.js"></script>
+<script src="engine.js"></script>
+<script src="canvas.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
