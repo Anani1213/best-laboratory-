@@ -1,1679 +1,1132 @@
 /* ============================================================================
  * VirtuaLab Pro — app.js
  * ----------------------------------------------------------------------------
- * DOM bindings, UI controllers, Web Audio synthesizer and telemetry sync.
- *
- * GLOBAL NAMESPACE : window.VirtuaLabApp
- * DEPENDS ON       : window.ChemicalsDB, window.ChemistryEngine, window.CanvasRenderer
- *
- * MANDATED IDS
+ * DOM Event Controller · Telemetry Binder · Web Audio Procedural Synth
+ * Author: VirtuaLab Pro Frontend Interaction Core
  * ----------------------------------------------------------------------------
- *   openReagentModalBtn, closeReagentModalBtn, reagentModal
- *   labCanvas, logTerminal, formulaBanner
- *   clearVesselBtn, refillBtn, stirBtn, flushBtn, addWaterBtn, waterInput
- *   flameSlider, stirrerSlider, titrationSlider
+ * RESPONSIBILITIES
+ *   • Wire every mandated DOM control to the ChemistryEngine + CanvasRenderer
+ *   • Populate #reagentModal from window.ChemicalsDB dynamically
+ *   • Bind #flameSlider / #stirrerSlider / #titrationSlider live
+ *   • Render #tempDisplay / #phDisplay / #massDisplay / #volumeDisplay /
+ *     #molarityDisplay / #formulaBanner / #activeSpeciesList / #logTerminal
+ *   • Procedural Web Audio synth: click, burner hiss, boiling bubbles,
+ *     gas fizz, explosive detonation, liquid pour, glass tap, indicator drip
  *
- * OPTIONAL IDS (used when present, gracefully skipped when absent)
- * ----------------------------------------------------------------------------
- *   reagentSearch, reagentCategoryFilter, reagentList, reagentAmount,
- *   reagentUnitBadge, reagentAddBtn, reagentCloseBtn, telemetry fields
- *   with [data-telemetry="..."] attributes.
+ * DEPENDS ON: window.ChemicalsDB, window.ChemistryEngine, window.CanvasRenderer
  * ==========================================================================*/
 
-window.VirtuaLabApp = (function () {
-  "use strict";
+(function (global) {
+  'use strict';
+
+  const VERSION = '1.0.0';
 
   /* ==========================================================================
-   * 0. TINY DOM HELPERS
+   * 1. BOOT GUARD
    * ========================================================================*/
+  if (typeof document === 'undefined') return;
 
-  function $(sel, root) { return (root || document).querySelector(sel); }
-  function $$(sel, root) {
-    return Array.prototype.slice.call((root || document).querySelectorAll(sel));
-  }
-  function el(tag, attrs, children) {
-    var node = document.createElement(tag);
-    if (attrs) {
-      for (var k in attrs) {
-        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
-        if (k === "class") node.className = attrs[k];
-        else if (k === "text") node.textContent = attrs[k];
-        else if (k === "html") node.innerHTML = attrs[k];
-        else if (k.indexOf("data-") === 0) node.setAttribute(k, attrs[k]);
-        else if (k.indexOf("on") === 0 && typeof attrs[k] === "function") {
-          node.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
-        } else {
-          node.setAttribute(k, attrs[k]);
-        }
-      }
-    }
-    if (children) {
-      if (!Array.isArray(children)) children = [children];
-      for (var i = 0; i < children.length; i++) {
-        var c = children[i];
-        if (c == null) continue;
-        node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
-      }
-    }
-    return node;
-  }
-
-  function fmtNum(n, dp) {
-    if (n === null || n === undefined || isNaN(n)) return "—";
-    if (dp === undefined) dp = 2;
-    var a = Math.abs(n);
-    if (a !== 0 && (a < 1e-4 || a >= 1e6)) return n.toExponential(2);
-    return Number(n.toFixed(dp)).toString();
-  }
-
-  function escapeHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+  function ready(fn) {
+    if (document.readyState === 'loading')
+      document.addEventListener('DOMContentLoaded', fn);
+    else fn();
   }
 
   /* ==========================================================================
-   * 1. WEB AUDIO SYNTHESIZER
-   * ------------------------------------------------------------------------
-   * Fully procedural — no external audio files. Every sound is generated
-   * from oscillators, noise buffers, biquad filters and ADSR envelopes.
+   * 2. WEB AUDIO PROCEDURAL SYNTH
    * ========================================================================*/
+  const AudioEngine = (function () {
+    let ctx = null;
+    let master = null;
+    let unlocked = false;
+    const loops = {};
 
-  function AudioSynth() {
-    this.ctx = null;
-    this.master = null;
-    this.enabled = true;
-    this.volume = 0.55;
-    this._ready = false;
-    this._noiseBuffer = null;
-    this._loops = {};
-    this._lastPlay = {};
-  }
-
-  AudioSynth.prototype._ensure = function () {
-    if (this._ready) return true;
-    try {
-      var Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return false;
-      this.ctx = new Ctx();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = this.volume;
-
-      /* Gentle master compressor so explosions never clip harshly */
-      var comp = this.ctx.createDynamicsCompressor();
-      comp.threshold.value = -14;
-      comp.knee.value = 22;
-      comp.ratio.value = 6;
-      comp.attack.value = 0.003;
-      comp.release.value = 0.22;
-
-      this.master.connect(comp);
-      comp.connect(this.ctx.destination);
-
-      this._noiseBuffer = this._makeNoiseBuffer(2.0);
-      this._ready = true;
-      return true;
-    } catch (e) {
-      this._ready = false;
-      return false;
+    function _ensure() {
+      if (ctx) return true;
+      try {
+        const AC = global.AudioContext || global.webkitAudioContext;
+        if (!AC) return false;
+        ctx = new AC();
+        master = ctx.createGain();
+        master.gain.value = 0.55;
+        master.connect(ctx.destination);
+        return true;
+      } catch (e) {
+        console.warn('[AudioEngine] init failed:', e);
+        return false;
+      }
     }
-  };
 
-  AudioSynth.prototype.resume = function () {
-    if (!this._ensure()) return;
-    if (this.ctx.state === "suspended") {
-      try { this.ctx.resume(); } catch (e) { /* ignore */ }
+    function unlock() {
+      if (!_ensure()) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      unlocked = true;
     }
-  };
 
-  AudioSynth.prototype.setEnabled = function (on) {
-    this.enabled = !!on;
-    if (this.master) this.master.gain.value = this.enabled ? this.volume : 0;
-  };
+    /* ---------- fundamental voices ---------------------------------- */
+    function click() {
+      if (!_ensure()) return;
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'square';
+      o.frequency.setValueAtTime(880, t);
+      o.frequency.exponentialRampToValueAtTime(240, t + 0.06);
+      g.gain.setValueAtTime(0.14, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+      o.connect(g).connect(master);
+      o.start(t); o.stop(t + 0.08);
+    }
 
-  AudioSynth.prototype._throttle = function (key, ms) {
-    var now = performance.now();
-    if (this._lastPlay[key] && now - this._lastPlay[key] < ms) return false;
-    this._lastPlay[key] = now;
-    return true;
-  };
-
-  AudioSynth.prototype._makeNoiseBuffer = function (seconds) {
-    var len = Math.floor(this.ctx.sampleRate * seconds);
-    var buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    var data = buf.getChannelData(0);
-    for (var i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    return buf;
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* CLICK — short crisp UI tick                                      */
-  /* ---------------------------------------------------------------- */
-  AudioSynth.prototype.click = function (pitch) {
-    if (!this.enabled) return;
-    if (!this._ensure()) return;
-    this.resume();
-    if (!this._throttle("click", 45)) return;
-
-    var t = this.ctx.currentTime;
-    var osc = this.ctx.createOscillator();
-    var gain = this.ctx.createGain();
-    var filter = this.ctx.createBiquadFilter();
-
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(pitch || 880, t);
-    osc.frequency.exponentialRampToValueAtTime(420, t + 0.06);
-
-    filter.type = "bandpass";
-    filter.frequency.value = 1400;
-    filter.Q.value = 1.4;
-
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.24, t + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
-
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.master);
-    osc.start(t);
-    osc.stop(t + 0.11);
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* WATER SPLASH — filtered noise burst                              */
-  /* ---------------------------------------------------------------- */
-  AudioSynth.prototype.splash = function (strength) {
-    if (!this.enabled) return;
-    if (!this._ensure()) return;
-    this.resume();
-
-    strength = Math.max(0.2, Math.min(1.0, strength || 0.6));
-    var t = this.ctx.currentTime;
-    var src = this.ctx.createBufferSource();
-    src.buffer = this._noiseBuffer;
-
-    var filter = this.ctx.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.setValueAtTime(900, t);
-    filter.frequency.exponentialRampToValueAtTime(2400, t + 0.18);
-    filter.Q.value = 1.1;
-
-    var gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.22 * strength, t + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-
-    src.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.master);
-    src.start(t);
-    src.stop(t + 0.36);
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* FIZZ — sharp high-passed noise crackle (gas evolution)           */
-  /* ---------------------------------------------------------------- */
-  AudioSynth.prototype.fizzBurst = function (duration, intensity) {
-    if (!this.enabled) return;
-    if (!this._ensure()) return;
-    this.resume();
-
-    duration = duration || 0.6;
-    intensity = Math.max(0.2, Math.min(1.2, intensity || 0.7));
-    var t = this.ctx.currentTime;
-
-    var src = this.ctx.createBufferSource();
-    src.buffer = this._noiseBuffer;
-    src.loop = true;
-
-    var hp = this.ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 2800;
-
-    var bp = this.ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 5200;
-    bp.Q.value = 0.7;
-
-    var gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.14 * intensity, t + 0.06);
-    gain.gain.linearRampToValueAtTime(0.10 * intensity, t + duration * 0.55);
-    gain.gain.linearRampToValueAtTime(0.0001, t + duration);
-
-    src.connect(hp);
-    hp.connect(bp);
-    bp.connect(gain);
-    gain.connect(this.master);
-    src.start(t);
-    src.stop(t + duration + 0.02);
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* EXPLOSION — low thump + noise tail + sub-bass punch              */
-  /* ---------------------------------------------------------------- */
-  AudioSynth.prototype.explosion = function (power) {
-    if (!this.enabled) return;
-    if (!this._ensure()) return;
-    this.resume();
-
-    power = Math.max(0.4, Math.min(2.0, power || 1.0));
-    var t = this.ctx.currentTime;
-
-    /* --- sub-bass punch --- */
-    var sub = this.ctx.createOscillator();
-    sub.type = "sine";
-    sub.frequency.setValueAtTime(120, t);
-    sub.frequency.exponentialRampToValueAtTime(28, t + 0.42);
-
-    var subGain = this.ctx.createGain();
-    subGain.gain.setValueAtTime(0.0001, t);
-    subGain.gain.exponentialRampToValueAtTime(0.62 * power, t + 0.012);
-    subGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
-
-    sub.connect(subGain);
-    subGain.connect(this.master);
-    sub.start(t);
-    sub.stop(t + 0.6);
-
-    /* --- noise burst --- */
-    var src = this.ctx.createBufferSource();
-    src.buffer = this._noiseBuffer;
-
-    var lp = this.ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.setValueAtTime(3400, t);
-    lp.frequency.exponentialRampToValueAtTime(220, t + 0.7);
-
-    var noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.0001, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.42 * power, t + 0.008);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
-
-    src.connect(lp);
-    lp.connect(noiseGain);
-    noiseGain.connect(this.master);
-    src.start(t);
-    src.stop(t + 0.9);
-
-    /* --- crackle layer --- */
-    var crackle = this.ctx.createBufferSource();
-    crackle.buffer = this._noiseBuffer;
-    var hp = this.ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 4200;
-    var cg = this.ctx.createGain();
-    cg.gain.setValueAtTime(0.0001, t + 0.02);
-    cg.gain.exponentialRampToValueAtTime(0.12 * power, t + 0.06);
-    cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-    crackle.connect(hp);
-    hp.connect(cg);
-    cg.connect(this.master);
-    crackle.start(t + 0.02);
-    crackle.stop(t + 0.32);
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* IGNITION — sharp crack + bright chirp                            */
-  /* ---------------------------------------------------------------- */
-  AudioSynth.prototype.ignition = function () {
-    if (!this.enabled) return;
-    if (!this._ensure()) return;
-    this.resume();
-
-    var t = this.ctx.currentTime;
-
-    var osc = this.ctx.createOscillator();
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(280, t);
-    osc.frequency.exponentialRampToValueAtTime(1400, t + 0.08);
-
-    var g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.30, t + 0.006);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-
-    var bp = this.ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 1600;
-    bp.Q.value = 1.6;
-
-    osc.connect(bp);
-    bp.connect(g);
-    g.connect(this.master);
-    osc.start(t);
-    osc.stop(t + 0.24);
-
-    this.explosion(0.75);
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* PRECIPITATE — soft sprinkling rain                               */
-  /* ---------------------------------------------------------------- */
-  AudioSynth.prototype.precipitate = function () {
-    if (!this.enabled) return;
-    if (!this._ensure()) return;
-    this.resume();
-    if (!this._throttle("precip", 220)) return;
-
-    var t = this.ctx.currentTime;
-    var src = this.ctx.createBufferSource();
-    src.buffer = this._noiseBuffer;
-
-    var bp = this.ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 6200;
-    bp.Q.value = 2.0;
-
-    var g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.075, t + 0.05);
-    g.gain.linearRampToValueAtTime(0.0001, t + 0.75);
-
-    src.connect(bp);
-    bp.connect(g);
-    g.connect(this.master);
-    src.start(t);
-    src.stop(t + 0.78);
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* DING — UI success chime                                         */
-  /* ---------------------------------------------------------------- */
-  AudioSynth.prototype.ding = function (freq) {
-    if (!this.enabled) return;
-    if (!this._ensure()) return;
-    this.resume();
-
-    var t = this.ctx.currentTime;
-    var base = freq || 880;
-
-    [1, 2, 3].forEach(function (mult, idx) {
-      var osc = this.ctx.createOscillator();
-      var g = this.ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = base * mult;
-      var amp = 0.14 / (idx + 1);
+    function waterPour(dur) {
+      if (!_ensure()) return;
+      dur = dur || 0.5;
+      const t = ctx.currentTime;
+      // filtered noise stream
+      const buf = _noiseBuffer(dur);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 800;
+      bp.Q.value = 1.4;
+      const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(amp, t + 0.008);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
-      osc.connect(g);
-      g.connect(this.master);
-      osc.start(t);
-      osc.stop(t + 0.82);
-    }, this);
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* CONTINUOUS LOOPS — burner hiss, boiling rumble, gas fizz         */
-  /* ---------------------------------------------------------------- */
-
-  AudioSynth.prototype._startNoiseLoop = function (key, opts) {
-    if (this._loops[key]) return this._loops[key];
-    if (!this._ensure()) return null;
-
-    var src = this.ctx.createBufferSource();
-    src.buffer = this._noiseBuffer;
-    src.loop = true;
-
-    var filter = this.ctx.createBiquadFilter();
-    filter.type = opts.filterType || "bandpass";
-    filter.frequency.value = opts.frequency || 1000;
-    filter.Q.value = opts.q || 1;
-
-    var gain = this.ctx.createGain();
-    gain.gain.value = 0;
-
-    var lfo = null, lfoGain = null;
-    if (opts.lfoRate) {
-      lfo = this.ctx.createOscillator();
-      lfo.frequency.value = opts.lfoRate;
-      lfoGain = this.ctx.createGain();
-      lfoGain.gain.value = opts.lfoDepth || 0;
-      lfo.connect(lfoGain);
-      lfoGain.connect(gain.gain);
-      lfo.start();
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(bp).connect(g).connect(master);
+      src.start(t); src.stop(t + dur);
     }
 
-    src.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.master);
-    src.start();
-
-    var loop = { src: src, gain: gain, filter: filter, lfo: lfo, lfoGain: lfoGain, base: opts.base || 0 };
-    this._loops[key] = loop;
-    return loop;
-  };
-
-  AudioSynth.prototype._setLoopGain = function (key, target, ramp) {
-    var loop = this._loops[key];
-    if (!loop || !this.ctx) return;
-    var t = this.ctx.currentTime;
-    var g = loop.gain.gain;
-    try {
-      g.cancelScheduledValues(t);
-      g.setValueAtTime(g.value, t);
-      g.linearRampToValueAtTime(Math.max(0, target), t + (ramp || 0.3));
-    } catch (e) {
-      g.value = Math.max(0, target);
+    function glassTap() {
+      if (!_ensure()) return;
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(1650, t);
+      o.frequency.exponentialRampToValueAtTime(720, t + 0.14);
+      g.gain.setValueAtTime(0.16, t);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.16);
+      o.connect(g).connect(master);
+      o.start(t); o.stop(t + 0.18);
     }
-  };
 
-  AudioSynth.prototype.setBurnerHiss = function (intensity) {
-    if (!this.enabled) { this._setLoopGain("hiss", 0, 0.2); return; }
-    if (intensity <= 0.001) { this._setLoopGain("hiss", 0, 0.4); return; }
-    if (!this._loops.hiss) {
-      this._startNoiseLoop("hiss", {
-        filterType: "highpass",
-        frequency: 3400,
-        q: 0.7,
-        lfoRate: 6.2,
-        lfoDepth: 0.008,
-        base: 0.12
-      });
+    function indicatorDrip() {
+      if (!_ensure()) return;
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(1400, t);
+      o.frequency.exponentialRampToValueAtTime(320, t + 0.22);
+      g.gain.setValueAtTime(0.10, t);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.25);
+      o.connect(g).connect(master);
+      o.start(t); o.stop(t + 0.26);
     }
-    this._setLoopGain("hiss", 0.14 * intensity, 0.25);
-  };
 
-  AudioSynth.prototype.setBoiling = function (intensity) {
-    if (!this.enabled) { this._setLoopGain("boil", 0, 0.2); return; }
-    if (intensity <= 0.001) { this._setLoopGain("boil", 0, 0.5); return; }
-    if (!this._loops.boil) {
-      this._startNoiseLoop("boil", {
-        filterType: "lowpass",
-        frequency: 620,
-        q: 0.9,
-        lfoRate: 2.1,
-        lfoDepth: 0.03,
-        base: 0.18
-      });
+    function explosion() {
+      if (!_ensure()) return;
+      const t = ctx.currentTime;
+      // low body thump
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(180, t);
+      o.frequency.exponentialRampToValueAtTime(40, t + 0.9);
+      g.gain.setValueAtTime(0.55, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+      o.connect(g).connect(master);
+      o.start(t); o.stop(t + 1.05);
+      // noise blast
+      const buf = _noiseBuffer(0.9);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 220;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.5, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+      src.connect(hp).connect(ng).connect(master);
+      src.start(t); src.stop(t + 0.9);
     }
-    this._setLoopGain("boil", 0.20 * intensity, 0.35);
-  };
 
-  AudioSynth.prototype.setGasFizz = function (intensity) {
-    if (!this.enabled) { this._setLoopGain("gas", 0, 0.2); return; }
-    if (intensity <= 0.001) { this._setLoopGain("gas", 0, 0.35); return; }
-    if (!this._loops.gas) {
-      this._startNoiseLoop("gas", {
-        filterType: "bandpass",
-        frequency: 4800,
-        q: 0.8,
-        lfoRate: 3.7,
-        lfoDepth: 0.02,
-        base: 0.15
-      });
+    function gasFizz(dur) {
+      if (!_ensure()) return;
+      dur = dur || 1.5;
+      const t = ctx.currentTime;
+      const buf = _noiseBuffer(dur);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 2200;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.15, t + 0.1);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(hp).connect(g).connect(master);
+      src.start(t); src.stop(t + dur);
     }
-    this._setLoopGain("gas", 0.16 * intensity, 0.3);
-  };
 
-  AudioSynth.prototype.stopAllLoops = function () {
-    this.setBurnerHiss(0);
-    this.setBoiling(0);
-    this.setGasFizz(0);
-  };
+    /* ---------- sustained loops ------------------------------------- */
+    function startBurnerHiss(intensity) {
+      if (!_ensure()) return;
+      stopBurnerHiss();
+      const t = ctx.currentTime;
+      const buf = _noiseBuffer(4, true);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 400;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 4200;
+      const g = ctx.createGain();
+      const target = 0.02 + intensity * 0.16;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(target, t + 0.2);
+      src.connect(hp).connect(lp).connect(g).connect(master);
+      src.start(t);
+      loops.burner = { src, g, hp, lp };
+    }
+
+    function setBurnerIntensity(intensity) {
+      if (!loops.burner) return;
+      const t = ctx.currentTime;
+      const target = 0.02 + Math.max(0, Math.min(1, intensity)) * 0.16;
+      loops.burner.g.gain.cancelScheduledValues(t);
+      loops.burner.g.gain.linearRampToValueAtTime(target, t + 0.15);
+      loops.burner.hp.frequency.linearRampToValueAtTime(300 + intensity * 700, t + 0.15);
+    }
+
+    function stopBurnerHiss() {
+      if (!loops.burner) return;
+      try {
+        const t = ctx.currentTime;
+        loops.burner.g.gain.cancelScheduledValues(t);
+        loops.burner.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        loops.burner.src.stop(t + 0.25);
+      } catch (e) {}
+      loops.burner = null;
+    }
+
+    function startBoilBubbles() {
+      if (!_ensure() || loops.boil) return;
+      const t = ctx.currentTime;
+      const buf = _noiseBuffer(4, true);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 340;
+      bp.Q.value = 1.0;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.10, t + 0.6);
+      src.connect(bp).connect(g).connect(master);
+      src.start(t);
+      loops.boil = { src, g, bp };
+    }
+
+    function stopBoilBubbles() {
+      if (!loops.boil) return;
+      try {
+        const t = ctx.currentTime;
+        loops.boil.g.gain.cancelScheduledValues(t);
+        loops.boil.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+        loops.boil.src.stop(t + 0.5);
+      } catch (e) {}
+      loops.boil = null;
+    }
+
+    function startStirWash(intensity) {
+      if (!_ensure()) return;
+      stopStirWash();
+      const t = ctx.currentTime;
+      const buf = _noiseBuffer(4, true);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 500 + intensity * 900;
+      const g = ctx.createGain();
+      const target = 0.03 + intensity * 0.09;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(target, t + 0.35);
+      src.connect(lp).connect(g).connect(master);
+      src.start(t);
+      loops.stir = { src, g, lp };
+    }
+
+    function stopStirWash() {
+      if (!loops.stir) return;
+      try {
+        const t = ctx.currentTime;
+        loops.stir.g.gain.cancelScheduledValues(t);
+        loops.stir.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+        loops.stir.src.stop(t + 0.3);
+      } catch (e) {}
+      loops.stir = null;
+    }
+
+    /* ---------- noise buffer factory -------------------------------- */
+    let _noiseCache = null;
+    function _noiseBuffer(sec, cache) {
+      if (cache && _noiseCache && _noiseCache.duration >= sec) {
+        return _noiseCache;
+      }
+      const sr = ctx.sampleRate;
+      const len = Math.max(1, Math.floor(sr * sec));
+      const buf = ctx.createBuffer(1, len, sr);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      if (cache) _noiseCache = buf;
+      return buf;
+    }
+
+    return {
+      unlock, click, waterPour, glassTap, indicatorDrip,
+      explosion, gasFizz,
+      startBurnerHiss, setBurnerIntensity, stopBurnerHiss,
+      startBoilBubbles, stopBoilBubbles,
+      startStirWash, stopStirWash,
+      get isUnlocked() { return unlocked; }
+    };
+  })();
 
   /* ==========================================================================
-   * 2. APP CONTROLLER
+   * 3. DOM CACHE
    * ========================================================================*/
+  const D = {};
 
-  function App() {
-    this.engine = null;
-    this.renderer = null;
-    this.audio = new AudioSynth();
-
-    this.ui = {};
-    this.selectedSpeciesId = null;
-    this.activeCategory = "all";
-    this.searchQuery = "";
-
-    this._lastReactionCount = 0;
-    this._lastGasMoles = 0;
-    this._lastTempK = 273.15;
-    this._telemetryTimer = null;
-    this._titrationTimer = null;
-    this._titrantId = "NaOH";
-    this._titrantMolarity = 0.1;
-    this._titrantVolumeAccumulated = 0;
-    this._logCount = 0;
-
-    this._lastEventCount = 0;
+  function cacheDom() {
+    const ids = [
+      'labCanvas',
+      'openReagentModalBtn', 'closeReagentModalBtn', 'reagentModal',
+      'clearVesselBtn', 'refillBtn', 'stirBtn', 'flushBtn',
+      'addWaterBtn', 'waterInput',
+      'flameSlider', 'stirrerSlider', 'titrationSlider',
+      'formulaBanner', 'activeSpeciesList', 'logTerminal',
+      'tempDisplay', 'phDisplay', 'massDisplay', 'volumeDisplay', 'molarityDisplay'
+    ];
+    for (const id of ids) D[id] = document.getElementById(id);
   }
 
-  /* ----------------------------------------------------------------------
-   * 2.1 Boot
-   * -------------------------------------------------------------------- */
+  /* ==========================================================================
+   * 4. LOG TERMINAL
+   * ========================================================================*/
+  const Log = (function () {
+    const MAX_LINES = 200;
+    const lines = [];
+    let el = null;
 
-  App.prototype.boot = function () {
-    var self = this;
-
-    /* --- instantiate engine + renderer --- */
-    if (!window.ChemistryEngine) {
-      console.error("[VirtuaLabApp] ChemistryEngine missing — cannot boot.");
-      return;
-    }
-    this.engine = window.ChemistryEngine.createEngine();
-
-    var canvas = document.getElementById("labCanvas");
-    if (canvas && window.CanvasRenderer) {
-      this.renderer = new window.CanvasRenderer(canvas, this.engine);
-      this.renderer.start();
+    function init(terminalEl) {
+      el = terminalEl;
+      if (!el) return;
+      info('VirtuaLab Pro v' + VERSION + ' online.');
+      info('Bunsen burner, 500 mL beaker, full reagent shelf ready.');
     }
 
-    /* --- cache DOM handles --- */
-    this._cacheDom();
+    function _write(level, msg) {
+      const stamp = new Date().toLocaleTimeString([], { hour12: false });
+      const entry = { level, stamp, msg };
+      lines.push(entry);
+      if (lines.length > MAX_LINES) lines.shift();
+      if (!el) return;
+      const cls = {
+        info: 'text-slate-300',
+        warn: 'text-amber-300',
+        error: 'text-rose-400',
+        success: 'text-emerald-300',
+        reaction: 'text-cyan-300',
+        heat: 'text-orange-300'
+      }[level] || 'text-slate-300';
+      const div = document.createElement('div');
+      div.className = cls + ' leading-tight';
+      div.innerHTML = `<span class="text-slate-500">[${stamp}]</span> ${escapeHtml(msg)}`;
+      el.appendChild(div);
+      while (el.childNodes.length > MAX_LINES) el.removeChild(el.firstChild);
+      el.scrollTop = el.scrollHeight;
+    }
 
-    /* --- bind every control --- */
-    this._bindControls();
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
 
-    /* --- build the reagent modal contents --- */
-    this._buildModalContents();
-
-    /* --- initial telemetry render --- */
-    this._syncTelemetry();
-
-    /* --- start the telemetry heartbeat --- */
-    this._telemetryTimer = setInterval(function () {
-      self._syncTelemetry();
-      self._syncAudioLoops();
-      self._drainEngineEvents();
-    }, 220);
-
-    /* --- unlock audio on the first user gesture --- */
-    var unlock = function () {
-      self.audio._ensure();
-      self.audio.resume();
-      document.removeEventListener("pointerdown", unlock);
-      document.removeEventListener("keydown", unlock);
+    return {
+      init,
+      info:    m => _write('info', m),
+      warn:    m => _write('warn', m),
+      error:   m => _write('error', m),
+      success: m => _write('success', m),
+      reaction:m => _write('reaction', m),
+      heat:    m => _write('heat', m)
     };
-    document.addEventListener("pointerdown", unlock);
-    document.addEventListener("keydown", unlock);
+  })();
 
-    this._log("system", "VirtuaLab Pro initialised. " +
-      (window.ChemicalsDB ? window.ChemicalsDB.count() : 0) + " reagents ready.");
+  /* ==========================================================================
+   * 5. TELEMETRY READOUT BINDING
+   * ========================================================================*/
+  const Telemetry = (function () {
+    let lastPH = 7;
 
-    /* --- welcome banner --- */
-    this._setFormulaBanner("Ready — add a reagent to begin.", "idle");
-  };
-
-  App.prototype._cacheDom = function () {
-    var ids = [
-      "openReagentModalBtn", "closeReagentModalBtn", "reagentModal",
-      "labCanvas", "logTerminal", "formulaBanner",
-      "clearVesselBtn", "refillBtn", "stirBtn", "flushBtn",
-      "addWaterBtn", "waterInput",
-      "flameSlider", "stirrerSlider", "titrationSlider"
-    ];
-    for (var i = 0; i < ids.length; i++) {
-      this.ui[ids[i]] = document.getElementById(ids[i]);
+    function _phColor(pH) {
+      if (pH < 3)  return 'text-rose-400';
+      if (pH < 5)  return 'text-orange-400';
+      if (pH < 6.5) return 'text-amber-300';
+      if (pH < 7.5) return 'text-emerald-300';
+      if (pH < 9)  return 'text-teal-300';
+      if (pH < 11) return 'text-sky-400';
+      return 'text-violet-400';
     }
 
-    /* Optional modal internals */
-    this.ui.reagentSearch = document.getElementById("reagentSearch");
-    this.ui.reagentCategoryFilter = document.getElementById("reagentCategoryFilter");
-    this.ui.reagentList = document.getElementById("reagentList");
-    this.ui.reagentAmount = document.getElementById("reagentAmount");
-    this.ui.reagentUnitBadge = document.getElementById("reagentUnitBadge");
-    this.ui.reagentAddBtn = document.getElementById("reagentAddBtn");
-    this.ui.reagentSelectedLabel = document.getElementById("reagentSelectedLabel");
-    this.ui.reagentSetTitrantBtn = document.getElementById("reagentSetTitrantBtn");
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.2 Bind every control
-   * -------------------------------------------------------------------- */
-
-  App.prototype._bindControls = function () {
-    var self = this;
-    var ui = this.ui;
-
-    /* ---------- MODAL OPEN / CLOSE ---------- */
-    if (ui.openReagentModalBtn) {
-      ui.openReagentModalBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        self.audio.click(960);
-        self.openModal();
-      });
-    }
-    if (ui.closeReagentModalBtn) {
-      ui.closeReagentModalBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        self.audio.click(620);
-        self.closeModal();
-      });
-    }
-    if (ui.reagentModal) {
-      ui.reagentModal.addEventListener("click", function (e) {
-        if (e.target === ui.reagentModal) self.closeModal();
-      });
-    }
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && ui.reagentModal && !ui.reagentModal.classList.contains("hidden")) {
-        self.closeModal();
-      }
-    });
-
-    /* ---------- VESSEL CONTROLS ---------- */
-    if (ui.clearVesselBtn) {
-      ui.clearVesselBtn.addEventListener("click", function () {
-        self.audio.click(500);
-        self.audio.splash(0.5);
-        var snap = self.engine.clear();
-        self._log("action", "Vessel cleared — all contents purged.");
-        self._setFormulaBanner("Vessel empty.", "idle");
-        self._lastEventCount = 0;
-        self._syncTelemetry();
-        if (self.renderer) {
-          self.renderer.triggerShockwave(
-            self.renderer.geom ? self.renderer.geom.beakerX : 0,
-            self.renderer.geom ? self.renderer.geom.gauzeY - 40 : 0,
-            "#80c8ff", 140
-          );
-        }
-        return snap;
-      });
+    function _tempColor(T) {
+      if (T < 30)  return 'text-sky-300';
+      if (T < 60)  return 'text-emerald-300';
+      if (T < 90)  return 'text-amber-300';
+      if (T < 100) return 'text-orange-400';
+      return 'text-rose-400';
     }
 
-    if (ui.refillBtn) {
-      ui.refillBtn.addEventListener("click", function () {
-        self.audio.click(700);
-        self.audio.splash(0.8);
-        var mL = 250;
-        if (ui.waterInput) {
-          var parsed = parseFloat(ui.waterInput.value);
-          if (!isNaN(parsed) && parsed > 0) mL = Math.min(parsed, 500);
-        }
-        self.engine.refill(mL);
-        self._log("action", "Refilled vessel to " + mL + " mL of distilled water.");
-        self._setFormulaBanner("H₂O — pure distilled water, pH ≈ 7.00", "info");
-        self._syncTelemetry();
-      });
+    function _setText(el, txt) {
+      if (!el) return;
+      if (el.textContent !== txt) el.textContent = txt;
     }
 
-    if (ui.stirBtn) {
-      ui.stirBtn.addEventListener("click", function () {
-        self.audio.click(880);
-        var on = self.engine.toggleStir();
-        if (ui.stirrerSlider) ui.stirrerSlider.value = String(Math.round((on ? 0.6 : 0) * 100));
-        self._log("action", "Magnetic stirrer " + (on ? "ON" : "OFF") + ".");
-      });
+    function _setColor(el, cls) {
+      if (!el) return;
+      const colors = ['text-sky-300','text-emerald-300','text-amber-300',
+                      'text-orange-400','text-rose-400','text-teal-300',
+                      'text-violet-400'];
+      for (const c of colors) el.classList.remove(c);
+      el.classList.add(cls);
     }
 
-    if (ui.flushBtn) {
-      ui.flushBtn.addEventListener("click", function () {
-        self.audio.click(520);
-        self.audio.splash(1.0);
-        self.engine.flush();
-        self._log("action", "Vessel flushed with fresh water.");
-        self._setFormulaBanner("Flushed — fresh H₂O.", "info");
-        self._syncTelemetry();
-      });
+    function update(engine) {
+      if (!engine) return;
+      const t = engine.getTelemetry();
+
+      _setText(D.tempDisplay,     t.temperature.toFixed(1) + ' °C');
+      _setColor(D.tempDisplay,    _tempColor(t.temperature));
+
+      _setText(D.phDisplay,       t.pH.toFixed(2));
+      _setColor(D.phDisplay,      _phColor(t.pH));
+
+      _setText(D.massDisplay,     t.mass.toFixed(3) + ' g');
+      _setText(D.volumeDisplay,   t.volume.toFixed(1) + ' mL');
+      _setText(D.molarityDisplay, t.molarity.toFixed(4) + ' M');
+
+      lastPH = t.pH;
     }
 
-    if (ui.addWaterBtn) {
-      ui.addWaterBtn.addEventListener("click", function () {
-        var mL = 25;
-        if (ui.waterInput) {
-          var parsed = parseFloat(ui.waterInput.value);
-          if (!isNaN(parsed) && parsed > 0) mL = parsed;
-        }
-        self.audio.click(760);
-        self.audio.splash(Math.min(1, mL / 100));
-        var report = self.engine.addWater(mL);
-        self._log("action", "Added " + mL + " mL of water. Volume = " +
-          fmtNum(self.engine.vessel.waterVolume * 1000, 1) + " mL.");
-        self._drainEngineEvents(report);
-        self._syncTelemetry();
-      });
-    }
-
-    if (ui.waterInput) {
-      ui.waterInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" && ui.addWaterBtn) ui.addWaterBtn.click();
-      });
-    }
-
-    /* ---------- SLIDERS ---------- */
-    if (ui.flameSlider) {
-      var onFlame = function () {
-        var val = parseFloat(ui.flameSlider.value);
-        if (isNaN(val)) val = 0;
-        var power = Math.max(0, Math.min(100, val)) / 100;
-        self.engine.setFlame(power);
-        self.audio.setBurnerHiss(power);
-        if (power > 0.02 && self.audio._throttle("flameclick", 400)) {
-          self.audio.click(420);
-        }
-      };
-      ui.flameSlider.addEventListener("input", onFlame);
-      ui.flameSlider.addEventListener("change", onFlame);
-      onFlame();
-    }
-
-    if (ui.stirrerSlider) {
-      var onStir = function () {
-        var val = parseFloat(ui.stirrerSlider.value);
-        if (isNaN(val)) val = 0;
-        var rate = Math.max(0, Math.min(100, val)) / 100;
-        self.engine.setStirrer(rate);
-        if (rate > 0.02 && self.audio._throttle("stirclick", 500)) {
-          self.audio.click(1100);
-        }
-      };
-      ui.stirrerSlider.addEventListener("input", onStir);
-      ui.stirrerSlider.addEventListener("change", onStir);
-      onStir();
-    }
-
-    if (ui.titrationSlider) {
-      var onTitrate = function () {
-        var val = parseFloat(ui.titrationSlider.value);
-        if (isNaN(val)) val = 0;
-        var rate = Math.max(0, Math.min(100, val)) / 100;
-        self._setTitrationRate(rate);
-      };
-      ui.titrationSlider.addEventListener("input", onTitrate);
-      ui.titrationSlider.addEventListener("change", onTitrate);
-    }
-
-    /* ---------- MODAL INTERNAL CONTROLS ---------- */
-    if (ui.reagentSearch) {
-      ui.reagentSearch.addEventListener("input", function () {
-        self.searchQuery = ui.reagentSearch.value || "";
-        self._renderReagentList();
-      });
-    }
-    if (ui.reagentCategoryFilter) {
-      ui.reagentCategoryFilter.addEventListener("change", function () {
-        self.activeCategory = ui.reagentCategoryFilter.value || "all";
-        self._renderReagentList();
-      });
-    }
-    if (ui.reagentAddBtn) {
-      ui.reagentAddBtn.addEventListener("click", function () {
-        self._commitAddFromModal();
-      });
-    }
-    if (ui.reagentAmount) {
-      ui.reagentAmount.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") self._commitAddFromModal();
-      });
-    }
-    if (ui.reagentSetTitrantBtn) {
-      ui.reagentSetTitrantBtn.addEventListener("click", function () {
-        if (!self.selectedSpeciesId) return;
-        self._titrantId = self.selectedSpeciesId;
-        var sp = window.ChemicalsDB.get(self._titrantId);
-        self.audio.ding(720);
-        self._log("system", "Titrant set to " + (sp ? sp.name : self._titrantId) + " (0.10 M).");
-      });
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.3 Modal open / close
-   * -------------------------------------------------------------------- */
-
-  App.prototype.openModal = function () {
-    var m = this.ui.reagentModal;
-    if (!m) return;
-    m.classList.remove("hidden");
-    m.style.display = "";
-    m.setAttribute("aria-hidden", "false");
-    if (!this.ui.reagentList) this._buildModalContents();
-    this._renderReagentList();
-    if (this.ui.reagentSearch) {
-      setTimeout(function () { try { this.ui.reagentSearch.focus(); } catch (e) {} }.bind(this), 40);
-    }
-  };
-
-  App.prototype.closeModal = function () {
-    var m = this.ui.reagentModal;
-    if (!m) return;
-    m.classList.add("hidden");
-    m.style.display = "none";
-    m.setAttribute("aria-hidden", "true");
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.4 Build the reagent modal body (if not already present)
-   * -------------------------------------------------------------------- */
-
-  App.prototype._buildModalContents = function () {
-    var modal = this.ui.reagentModal;
-    if (!modal) return;
-
-    /* If the HTML already supplies #reagentList, keep everything as-is */
-    if (document.getElementById("reagentList")) {
-      this.ui.reagentList = document.getElementById("reagentList");
-      this.ui.reagentSearch = document.getElementById("reagentSearch");
-      this.ui.reagentCategoryFilter = document.getElementById("reagentCategoryFilter");
-      this.ui.reagentAmount = document.getElementById("reagentAmount");
-      this.ui.reagentUnitBadge = document.getElementById("reagentUnitBadge");
-      this.ui.reagentAddBtn = document.getElementById("reagentAddBtn");
-      this.ui.reagentSelectedLabel = document.getElementById("reagentSelectedLabel");
-      return;
-    }
-
-    /* --- locate or create the modal body --- */
-    var body = modal.querySelector("[data-modal-body]") || modal.querySelector(".modal-body");
-    if (!body) {
-      body = el("div", { class: "modal-body", "data-modal-body": "" });
-      modal.appendChild(body);
-    }
-
-    /* --- header / search row --- */
-    var search = el("input", {
-      type: "text",
-      id: "reagentSearch",
-      class: "vl-input text-slate-100 bg-slate-800",
-      placeholder: "Search reagents by name, formula or ID…",
-      autocomplete: "off",
-      spellcheck: "false"
-    });
-    var catSelect = el("select", {
-      id: "reagentCategoryFilter",
-      class: "vl-select text-slate-100 bg-slate-800"
-    });
-    catSelect.appendChild(el("option", { value: "all", text: "All categories" }));
-    var cats = window.ChemicalsDB ? window.ChemicalsDB.categories : {};
-    for (var ck in cats) {
-      if (!Object.prototype.hasOwnProperty.call(cats, ck)) continue;
-      catSelect.appendChild(el("option", {
-        value: ck,
-        text: (cats[ck].icon ? cats[ck].icon + "  " : "") + cats[ck].label
-      }));
-    }
-
-    var tools = el("div", { class: "vl-modal-tools" }, [search, catSelect]);
-    body.appendChild(tools);
-
-    /* --- list container --- */
-    var list = el("div", { id: "reagentList", class: "vl-reagent-list" });
-    body.appendChild(list);
-
-    /* --- add panel --- */
-    var amount = el("input", {
-      type: "number",
-      id: "reagentAmount",
-      class: "vl-input text-slate-100 bg-slate-800",
-      value: "1",
-      min: "0.01",
-      step: "0.1"
-    });
-    var unitBadge = el("span", {
-      id: "reagentUnitBadge",
-      class: "vl-unit-badge",
-      text: "g"
-    });
-    var selectedLabel = el("span", {
-      id: "reagentSelectedLabel",
-      class: "vl-selected-label",
-      text: "No reagent selected"
-    });
-    var addBtn = el("button", {
-      id: "reagentAddBtn",
-      type: "button",
-      class: "vl-btn vl-btn-primary",
-      text: "Add to Vessel"
-    });
-    var setTitrant = el("button", {
-      id: "reagentSetTitrantBtn",
-      type: "button",
-      class: "vl-btn vl-btn-ghost",
-      text: "Set as Titrant"
-    });
-
-    var addPanel = el("div", { class: "vl-add-panel" }, [
-      el("div", { class: "vl-add-row" }, [selectedLabel]),
-      el("div", { class: "vl-add-row vl-add-inputs" }, [
-        amount, unitBadge, addBtn, setTitrant
-      ])
-    ]);
-    body.appendChild(addPanel);
-
-    /* cache */
-    this.ui.reagentSearch = search;
-    this.ui.reagentCategoryFilter = catSelect;
-    this.ui.reagentList = list;
-    this.ui.reagentAmount = amount;
-    this.ui.reagentUnitBadge = unitBadge;
-    this.ui.reagentAddBtn = addBtn;
-    this.ui.reagentSelectedLabel = selectedLabel;
-    this.ui.reagentSetTitrantBtn = setTitrant;
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.5 Reagent list rendering
-   * -------------------------------------------------------------------- */
-
-  App.prototype._renderReagentList = function () {
-    var list = this.ui.reagentList;
-    if (!list || !window.ChemicalsDB) return;
-
-    var items = window.ChemicalsDB.list();
-    var cat = this.activeCategory;
-    var q = (this.searchQuery || "").trim().toLowerCase();
-
-    items = items.filter(function (sp) {
-      if (cat !== "all" && sp.category !== cat) return false;
-      if (!q) return true;
-      return (
-        sp.id.toLowerCase().indexOf(q) !== -1 ||
-        sp.name.toLowerCase().indexOf(q) !== -1 ||
-        String(sp.formula).toLowerCase().indexOf(q) !== -1
-      );
-    });
-
-    items.sort(function (a, b) {
-      return a.name.localeCompare(b.name);
-    });
-
-    /* -------- build DOM -------- */
-    var frag = document.createDocumentFragment();
-    var self = this;
-
-    if (items.length === 0) {
-      frag.appendChild(el("div", {
-        class: "vl-empty",
-        text: "No reagents match your search."
-      }));
-    }
-
-    for (var i = 0; i < items.length; i++) {
-      var sp = items[i];
-      var catInfo = window.ChemicalsDB.categories[sp.category] || { accent: "#7dd3fc", label: sp.category };
-
-      var row = el("button", {
-        type: "button",
-        class: "vl-reagent-row",
-        "data-id": sp.id,
-        "data-state": sp.state
-      });
-
-      var swatch = el("span", {
-        class: "vl-reagent-swatch",
-        style: "background:" + (sp.color || "#cccccc") + ";border-color:" + catInfo.accent
-      });
-
-      var main = el("span", { class: "vl-reagent-main" }, [
-        el("span", { class: "vl-reagent-name", text: sp.name }),
-        el("span", { class: "vl-reagent-formula", text: sp.formula }),
-        el("span", {
-          class: "vl-reagent-meta",
-          text: (sp.molarMass ? sp.molarMass.toFixed(2) + " g/mol" : "—") +
-                " · " + (sp.state || "—") +
-                (sp.pH !== null && sp.pH !== undefined ? " · pH " + sp.pH.toFixed(1) : "")
-        })
-      ]);
-
-      var badge = el("span", {
-        class: "vl-reagent-cat",
-        style: "color:" + catInfo.accent,
-        text: (catInfo.icon || "") + " " + catInfo.label
-      });
-
-      row.appendChild(swatch);
-      row.appendChild(main);
-      row.appendChild(badge);
-
-      if (sp.id === this.selectedSpeciesId) {
-        row.classList.add("is-selected");
-      }
-
-      row.addEventListener("click", (function (species) {
-        return function (e) {
-          e.preventDefault();
-          self._selectSpecies(species);
-        };
-      })(sp));
-
-      frag.appendChild(row);
-    }
-
-    list.innerHTML = "";
-    list.appendChild(frag);
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.6 Species selection + unit badge logic
-   * -------------------------------------------------------------------- */
-
-  App.prototype._selectSpecies = function (sp) {
-    this.selectedSpeciesId = sp.id;
-    this.audio.click(880);
-
-    /* --- highlight the chosen row --- */
-    var rows = $$(".vl-reagent-row", this.ui.reagentList);
-    for (var i = 0; i < rows.length; i++) {
-      rows[i].classList.toggle("is-selected", rows[i].getAttribute("data-id") === sp.id);
-    }
-
-    /* --- unit badge: 'g' for solids, 'mL' for liquids/aqueous, 'mol' for gases --- */
-    var unit = this._preferredUnitFor(sp);
-    if (this.ui.reagentUnitBadge) {
-      this.ui.reagentUnitBadge.textContent = unit;
-      this.ui.reagentUnitBadge.setAttribute("data-unit", unit);
-    }
-
-    /* --- default amount per unit class --- */
-    if (this.ui.reagentAmount) {
-      if (unit === "g") this.ui.reagentAmount.value = "5";
-      else if (unit === "mL") this.ui.reagentAmount.value = "25";
-      else this.ui.reagentAmount.value = "0.1";
-      this.ui.reagentAmount.step = unit === "mol" ? "0.01" : "0.5";
-      /* enforce required contrast classes */
-      this.ui.reagentAmount.classList.add("text-slate-100");
-      this.ui.reagentAmount.classList.add("bg-slate-800");
-    }
-
-    /* --- label --- */
-    if (this.ui.reagentSelectedLabel) {
-      this.ui.reagentSelectedLabel.innerHTML =
-        "<strong>" + escapeHtml(sp.name) + "</strong> " +
-        "<span class='vl-inline-formula'>" + escapeHtml(sp.formula) + "</span> " +
-        "<span class='vl-inline-meta'>· " + escapeHtml(sp.state) +
-        " · M = " + sp.molarMass.toFixed(2) + " g/mol</span>";
-    }
-
-    if (this.ui.reagentAddBtn) {
-      this.ui.reagentAddBtn.disabled = false;
-    }
-  };
-
-  /**
-   * Decide the unit to present in the modal.
-   *   solid              → "g"
-   *   liquid / aqueous   → "mL"
-   *   gas                → "mol"
-   */
-  App.prototype._preferredUnitFor = function (sp) {
-    if (!sp) return "g";
-    switch (sp.state) {
-      case "solid":   return "g";
-      case "liquid":  return "mL";
-      case "aqueous": return "mL";
-      case "gas":     return "mol";
-      default:        return "g";
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.7 Commit an addition from the modal
-   * -------------------------------------------------------------------- */
-
-  App.prototype._commitAddFromModal = function () {
-    if (!this.selectedSpeciesId) {
-      this._log("warn", "No reagent selected.");
-      return;
-    }
-    var sp = window.ChemicalsDB.get(this.selectedSpeciesId);
-    if (!sp) {
-      this._log("warn", "Selected reagent no longer exists.");
-      return;
-    }
-
-    var amount = 1;
-    if (this.ui.reagentAmount) {
-      var parsed = parseFloat(this.ui.reagentAmount.value);
-      if (isNaN(parsed) || parsed <= 0) {
-        this._log("warn", "Amount must be a positive number.");
-        this.audio.click(300);
+    function renderSpecies(engine) {
+      const el = D.activeSpeciesList;
+      if (!el) return;
+      const species = engine.getActiveSpecies();
+      if (!species.length) {
+        el.innerHTML = '<li class="text-slate-500 italic text-xs">Vessel empty</li>';
         return;
       }
-      amount = parsed;
+      const frag = document.createDocumentFragment();
+      // sort by phase priority then moles desc
+      const phaseOrder = { 'ion': 0, 'aq': 1, 'metal': 2, 'solid': 3,
+                           'precipitate': 4, 'g': 5 };
+      species.sort((a, b) => {
+        const pa = phaseOrder[a.phase] ?? 9;
+        const pb = phaseOrder[b.phase] ?? 9;
+        if (pa !== pb) return pa - pb;
+        return b.moles - a.moles;
+      });
+      for (const sp of species) {
+        const li = document.createElement('li');
+        li.className = 'flex items-center justify-between gap-2 px-2 py-1 rounded ' +
+                       'bg-slate-900/40 border border-slate-800 text-xs';
+        const phaseLabel = {
+          ion: 'aq·ion', aq: 'aq', metal: 's', solid: 's',
+          precipitate: 'ppt', g: 'g'
+        }[sp.phase] || sp.phase;
+        const badge = {
+          ion: 'bg-cyan-900/60 text-cyan-200',
+          aq: 'bg-sky-900/60 text-sky-200',
+          metal: 'bg-slate-700 text-slate-200',
+          solid: 'bg-amber-900/60 text-amber-200',
+          precipitate: 'bg-emerald-900/60 text-emerald-200',
+          g: 'bg-fuchsia-900/60 text-fuchsia-200'
+        }[sp.phase] || 'bg-slate-800 text-slate-300';
+        li.innerHTML =
+          `<span class="font-semibold text-slate-100">${escapeHtml(sp.formula)}</span>` +
+          `<span class="ml-1 text-slate-400 text-[10px]">${sp.moles.toExponential(2)} mol</span>` +
+          `<span class="ml-auto px-1.5 py-0.5 rounded ${badge} text-[10px] font-bold">${phaseLabel}</span>`;
+        frag.appendChild(li);
+      }
+      el.innerHTML = '';
+      el.appendChild(frag);
     }
 
-    var unit = this._preferredUnitFor(sp);
-    this._dispatchAdd(sp.id, amount, unit);
-    this.closeModal();
-  };
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
 
-  /* ----------------------------------------------------------------------
-   * 2.8 Dispatch an addition and react to the report
-   * -------------------------------------------------------------------- */
+    function renderFormulaBanner(engine) {
+      const el = D.formulaBanner;
+      if (!el) return;
+      const s = engine.state;
+      // Priority: dominant species > last reaction > default
+      if (s.lastReaction) {
+        el.textContent = s.lastReaction;
+        el.classList.add('text-cyan-200');
+        return;
+      }
+      const parts = [];
+      for (const [id, m] of Object.entries(s.molecular)) {
+        if (m > 1e-8) {
+          const sp = global.ChemicalsDB.get(id);
+          if (sp) parts.push(sp.formula);
+        }
+      }
+      for (const [ion, m] of Object.entries(s.ions)) {
+        if (m > 1e-8) parts.push(ion);
+      }
+      if (s.waterVolume > 0 && parts.length === 0) {
+        el.textContent = 'H₂O (pure solvent)';
+      } else if (parts.length) {
+        el.textContent = parts.slice(0, 4).join(' + ') +
+                         (parts.length > 4 ? ' …' : '');
+      } else {
+        el.textContent = 'Vessel empty — add a reagent';
+      }
+    }
 
-  App.prototype._dispatchAdd = function (id, amount, unit) {
-    var sp = window.ChemicalsDB.get(id);
-    if (!sp) return;
+    return { update, renderSpecies, renderFormulaBanner };
+  })();
 
-    var report;
-    try {
-      report = this.engine.addChemical(id, amount, unit);
-    } catch (err) {
-      console.error("[VirtuaLabApp] addChemical threw:", err);
-      this._log("error", "Engine error while adding " + id + ": " + err.message);
+  /* ==========================================================================
+   * 6. REAGENT MODAL
+   * ========================================================================*/
+  const ReagentModal = (function () {
+    let built = false;
+
+    function build() {
+      if (built || !D.reagentModal) return;
+      const DB = global.ChemicalsDB;
+      if (!DB) return;
+
+      // Locate grid container inside modal
+      const grid = D.reagentModal.querySelector('[data-reagent-grid]') ||
+                   D.reagentModal.querySelector('.grid');
+      if (!grid) {
+        console.warn('[ReagentModal] no grid container found');
+        return;
+      }
+
+      grid.innerHTML = '';
+
+      // Group by category
+      const groups = {};
+      for (const sp of DB.list()) {
+        if (sp.defaultState === 'gas') continue; // gases aren't a shelf reagent
+        const cat = sp.category;
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(sp);
+      }
+
+      const catOrder = ['water','strong_acid','weak_acid','strong_base','weak_base',
+                        'salt','insoluble','alkali_metal','metal','oxidizer',
+                        'indicator','organic'];
+      const orderedCats = catOrder.filter(c => groups[c])
+                        .concat(Object.keys(groups).filter(c => !catOrder.includes(c)));
+
+      for (const cat of orderedCats) {
+        const catMeta = DB.categories[cat] || { label: cat, color: '#64748b', icon: '•' };
+        const hdr = document.createElement('div');
+        hdr.className = 'col-span-full mt-2 mb-1 flex items-center gap-2 ' +
+                        'text-[11px] uppercase tracking-wider font-bold ' +
+                        'text-slate-400 border-b border-slate-800 pb-1';
+        hdr.innerHTML = `<span style="color:${catMeta.color}">${catMeta.icon}</span>` +
+                        `<span>${catMeta.label}</span>`;
+        grid.appendChild(hdr);
+
+        for (const sp of groups[cat]) {
+          grid.appendChild(buildReagentCard(sp));
+        }
+      }
+
+      built = true;
+    }
+
+    function buildReagentCard(sp) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className =
+        'group flex flex-col items-start gap-1 p-2 rounded-lg border ' +
+        'border-slate-700 bg-slate-800/60 hover:bg-slate-700/80 ' +
+        'hover:border-cyan-500 transition-all text-left';
+      card.dataset.reagentId = sp.id;
+
+      const isSolid = sp.defaultState === 'solid' && !sp.ions;
+      const unit = isSolid ? 'g' : 'mL';
+      const defQty = isSolid ? (sp.molarMass > 100 ? 5 : 1) : 25;
+
+      card.innerHTML =
+        `<div class="flex items-center gap-2 w-full">` +
+          `<span class="w-3 h-3 rounded-full flex-shrink-0 border border-slate-600" ` +
+            `style="background:${sp.solidColor || sp.color || '#475569'}"></span>` +
+          `<span class="text-xs font-bold text-slate-100 truncate">${escapeHtml(sp.formula)}</span>` +
+        `</div>` +
+        `<div class="text-[10px] text-slate-400 truncate w-full">${escapeHtml(sp.name)}</div>` +
+        `<div class="flex items-center gap-1 w-full mt-1">` +
+          `<input type="number" class="reagent-qty w-16 px-1 py-0.5 rounded ` +
+            `bg-slate-800 text-slate-100 border border-slate-700 font-bold ` +
+            `text-[10px] focus:outline-none focus:border-cyan-500" ` +
+            `value="${defQty}" min="0.1" step="${isSolid ? 0.5 : 5}">` +
+          `<span class="text-[10px] text-slate-400 font-mono">${unit}</span>` +
+          `<span class="ml-auto text-[9px] text-cyan-500 opacity-0 ` +
+            `group-hover:opacity-100 transition-opacity">+ ADD</span>` +
+        `</div>`;
+
+      // Click on card (not on input) adds reagent
+      card.addEventListener('click', (e) => {
+        if (e.target.classList.contains('reagent-qty')) return;
+        const input = card.querySelector('.reagent-qty');
+        const qty = parseFloat(input.value) || defQty;
+        addReagent(sp.id, qty, unit);
+      });
+
+      // Enter in input triggers add
+      const inp = card.querySelector('.reagent-qty');
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const qty = parseFloat(inp.value) || defQty;
+          addReagent(sp.id, qty, unit);
+        }
+      });
+
+      return card;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    function open() {
+      build();
+      if (!D.reagentModal) return;
+      D.reagentModal.classList.remove('hidden');
+      D.reagentModal.classList.add('flex');
+      AudioEngine.click();
+      Log.info('Reagent shelf opened.');
+    }
+
+    function close() {
+      if (!D.reagentModal) return;
+      D.reagentModal.classList.add('hidden');
+      D.reagentModal.classList.remove('flex');
+      AudioEngine.click();
+    }
+
+    return { build, open, close };
+  })();
+
+  /* ==========================================================================
+   * 7. REAGENT DISPATCH
+   * ========================================================================*/
+  function addReagent(id, qty, unit) {
+    const DB = global.ChemicalsDB;
+    const engine = global.ChemistryEngine;
+    if (!DB || !engine) return;
+
+    const sp = DB.get(id);
+    if (!sp) {
+      Log.error('Unknown reagent: ' + id);
       return;
     }
 
-    /* --- user-visible log line --- */
-    var unitLabel = unit === "g" ? " g" : unit === "mL" ? " mL" : " mol";
-    this._log("add", "Added " + fmtNum(amount, 3) + unitLabel + " of " + sp.name +
-      " (" + sp.formula + ").");
+    // Special handling before engine call — for logging + audio
+    const prevWater = engine.state.waterVolume;
+    const prevAlkali = engine.state.solids.filter(s =>
+      DB.isAlkaliMetal(s.id) && s.moles > 1e-8).length;
+    const prevGasCount = Object.keys(engine.state.gases).length;
+    const prevBoil = engine.state.boiling;
 
-    /* --- audio feedback for the addition itself --- */
-    if (sp.state === "liquid" || sp.state === "aqueous") {
-      this.audio.splash(Math.min(1, amount / 50));
-    } else if (sp.state === "gas") {
-      this.audio.fizzBurst(0.25, 0.4);
+    const result = engine.addChemical(id, qty);
+    if (!result.ok) {
+      Log.error('Add failed: ' + (result.error || 'unknown'));
+      return;
+    }
+
+    // Audio feedback by reagent class
+    if (sp.defaultState === 'liquid' || sp.defaultState === 'aqueous') {
+      AudioEngine.waterPour(Math.min(0.8, 0.25 + qty / 100));
+    } else if (sp.category === 'indicator') {
+      AudioEngine.indicatorDrip();
+    } else if (sp.category === 'alkali_metal') {
+      AudioEngine.glassTap();
     } else {
-      this.audio.click(640);
+      AudioEngine.glassTap();
     }
 
-    /* --- process each event that came back --- */
-    this._handleReport(report);
+    // Log
+    const unitLabel = result.unit || unit;
+    Log.success(`Added ${qty} ${unitLabel} ${sp.name} (${sp.formula}) ` +
+                `→ ${result.moles.toExponential(2)} mol.`);
 
-    /* --- drain any residual events that arrived between ticks --- */
-    this._drainEngineEvents(report);
-
-    this._syncTelemetry();
-    return report;
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.9 Handle a single engine report
-   * -------------------------------------------------------------------- */
-
-  App.prototype._handleReport = function (report) {
-    if (!report) return;
-
-    var events = report.events || [];
-    var bannerSet = false;
-
-    for (var i = 0; i < events.length; i++) {
-      var e = events[i];
-      if (!e) continue;
-
-      /* --- console-style log line --- */
-      var level = "info";
-      if (e.type === "reaction") level = "reaction";
-      if (e.type === "combustion") level = "danger";
-      if (e.enthalpyFlag === "EXOTHERMIC" && e.totalHeatJ > 8000) level = "danger";
-      if (e.toxicGas) level = "warn";
-
-      this._log(level, this._formatEventMessage(e));
-
-      /* --- equation → formula banner --- */
-      if (e.equation && !bannerSet) {
-        var tone = "reaction";
-        if (e.enthalpyFlag === "EXOTHERMIC") tone = "exo";
-        else if (e.enthalpyFlag === "ENDOTHERMIC") tone = "endo";
-        if (e.toxicGas) tone = "toxic";
-        if (e.ignition) tone = "danger";
-
-        this._setFormulaBanner(e.equation, tone, e);
-        bannerSet = true;
-      }
-
-      /* --- renderer FX --- */
-      if (this.renderer) {
-        this.renderer.handleEvents([e]);
-      }
-
-      /* --- audio reaction per event subtype --- */
-      this._playEventAudio(e);
+    // Check for alkali runaway
+    const postAlkaliInWater = engine.state.solids.filter(s =>
+      DB.isAlkaliMetal(s.id) && s.moles > 1e-8).length;
+    if (prevAlkali >= 0 && engine.state.waterVolume > 0 && sp.category === 'alkali_metal') {
+      // Do nothing special here — engine.reaction events will fire
     }
 
-    if (!bannerSet && report.ok && report.species) {
-      var sp = report.species;
-      this._setFormulaBanner(
-        sp.formula + " — " + sp.name + " (" + sp.state + ")",
-        "info"
-      );
-    }
-  };
-
-  App.prototype._formatEventMessage = function (e) {
-    if (!e) return "";
-    if (e.message) return e.message;
-
-    switch (e.type) {
-      case "addition":      return e.message || "Reagent added.";
-      case "dissolution":   return e.message || "Dissolution.";
-      case "combustion":    return "Combustion: " + (e.equation || "");
-      case "reaction":      return (e.subtype || "reaction") + ": " + (e.equation || "");
-      default:              return e.equation || e.type || "event";
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.10 Per-event audio cues
-   * -------------------------------------------------------------------- */
-
-  App.prototype._playEventAudio = function (e) {
-    if (!e) return;
-
-    if (e.type === "combustion") {
-      this.audio.ignition();
-      this.audio.explosion(1.2);
-      return;
+    // New gas formed → fizz
+    const postGasCount = Object.keys(engine.state.gases).length;
+    if (postGasCount > prevGasCount) {
+      AudioEngine.gasFizz(1.6);
     }
 
-    if (e.type === "reaction") {
-      switch (e.subtype) {
-        case "alkali-metal-water":
-          if (e.ignition) {
-            this.audio.ignition();
-            this.audio.explosion(1.4);
-          } else {
-            this.audio.fizzBurst(0.9, 1.0);
+    // Boiling transition
+    if (!prevBoil && engine.state.boiling) {
+      AudioEngine.startBoilBubbles();
+    }
+
+    Telemetry.renderFormulaBanner(engine);
+    Telemetry.renderSpecies(engine);
+  }
+
+  /* ==========================================================================
+   * 8. TITRATION LOGIC (slider = volume of last-added acid/base)
+   * ========================================================================*/
+  const Titration = (function () {
+    let lastReagentId = null;
+    let lastApplied = 0;
+
+    function setLastReagent(id) { lastReagentId = id; }
+
+    function apply(ml) {
+      const engine = global.ChemistryEngine;
+      const DB = global.ChemicalsDB;
+      if (!engine || !DB || !lastReagentId) return;
+
+      const sp = DB.get(lastReagentId);
+      if (!sp) return;
+
+      const delta = ml - lastApplied;
+      if (Math.abs(delta) < 0.05) return;
+
+      if (delta > 0) {
+        // add
+        engine.addChemical(lastReagentId, delta);
+        Log.info(`Titration: +${delta.toFixed(2)} mL ${sp.formula}`);
+        AudioEngine.indicatorDrip();
+      } else {
+        // remove = subtract moles
+        const add = -delta;
+        const mass = add * (sp.density || 1);
+        const moles = mass / sp.molarMass;
+        // Subtract from ions/molecular
+        if (sp.ions) {
+          for (const [ion, n] of Object.entries(sp.ions)) {
+            engine.state.ions[ion] = Math.max(0,
+              (engine.state.ions[ion] || 0) - moles * n);
           }
-          break;
+        } else {
+          engine.state.molecular[sp.id] = Math.max(0,
+            (engine.state.molecular[sp.id] || 0) - moles);
+        }
+        Log.info(`Titration: −${add.toFixed(2)} mL ${sp.formula}`);
+      }
+      lastApplied = ml;
+      engine.react();
+    }
 
-        case "alkaline-earth-water":
-          this.audio.fizzBurst(0.8, 0.8);
-          break;
+    function reset() {
+      lastApplied = 0;
+      if (D.titrationSlider) D.titrationSlider.value = 0;
+    }
 
-        case "metal-acid":
-          this.audio.fizzBurst(0.8, 0.9);
-          break;
+    return { setLastReagent, apply, reset };
+  })();
 
-        case "carbonate-acid":
-          this.audio.fizzBurst(0.7, 0.85);
-          break;
+  /* ==========================================================================
+   * 9. EVENT WIRING
+   * ========================================================================*/
+  function wireEvents() {
+    const engine = global.ChemistryEngine;
+    const renderer = global.CanvasRenderer;
 
-        case "sulfide-acid":
-        case "sulfite-acid":
-          this.audio.fizzBurst(0.6, 0.7);
-          break;
+    /* ----- unlock audio on first interaction ----- */
+    const unlockOnce = () => {
+      AudioEngine.unlock();
+      document.removeEventListener('pointerdown', unlockOnce);
+    };
+    document.addEventListener('pointerdown', unlockOnce);
 
-        case "ammonium-base":
-          this.audio.fizzBurst(0.5, 0.6);
-          break;
+    /* ----- reagent modal ----- */
+    if (D.openReagentModalBtn) {
+      D.openReagentModalBtn.addEventListener('click', () => {
+        ReagentModal.open();
+      });
+    }
+    if (D.closeReagentModalBtn) {
+      D.closeReagentModalBtn.addEventListener('click', () => {
+        ReagentModal.close();
+      });
+    }
+    if (D.reagentModal) {
+      // click on backdrop closes
+      D.reagentModal.addEventListener('click', (e) => {
+        if (e.target === D.reagentModal) ReagentModal.close();
+      });
+      // Esc closes
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' &&
+            !D.reagentModal.classList.contains('hidden')) {
+          ReagentModal.close();
+        }
+      });
+    }
 
-        case "catalytic-decomposition":
-          this.audio.fizzBurst(0.75, 0.9);
-          break;
+    /* ----- water input ----- */
+    if (D.addWaterBtn) {
+      D.addWaterBtn.addEventListener('click', () => {
+        const ml = parseFloat(D.waterInput ? D.waterInput.value : '100') || 100;
+        if (ml <= 0) { Log.warn('Water volume must be positive.'); return; }
+        const prevBoil = engine.state.boiling;
+        const res = engine.addWater(ml);
+        if (!res.ok) { Log.error('Water add failed: ' + res.error); return; }
+        AudioEngine.waterPour(Math.min(0.9, 0.2 + res.added / 200));
+        Log.info(`Poured ${res.added.toFixed(1)} mL distilled water. ` +
+                 `Vessel now ${engine.state.waterVolume.toFixed(1)} mL.`);
+        if (!prevBoil && engine.state.boiling) AudioEngine.startBoilBubbles();
+        Telemetry.renderFormulaBanner(engine);
+        Telemetry.renderSpecies(engine);
+      });
+    }
 
-        case "precipitation":
-          this.audio.precipitate();
-          break;
+    /* ----- clear / flush / refill ----- */
+    if (D.clearVesselBtn) {
+      D.clearVesselBtn.addEventListener('click', () => {
+        AudioEngine.waterPour(0.5);
+        AudioEngine.stopBoilBubbles();
+        AudioEngine.stopBurnerHiss();
+        AudioEngine.stopStirWash();
+        engine.clearVessel();
+        if (renderer) renderer.purgeParticles();
+        Titration.reset();
+        Log.warn('Vessel cleared — all contents purged.');
+        Telemetry.renderFormulaBanner(engine);
+        Telemetry.renderSpecies(engine);
+        if (D.flameSlider) D.flameSlider.value = 0;
+        if (D.stirrerSlider) D.stirrerSlider.value = 0;
+      });
+    }
 
-        case "halogen-displacement":
-          this.audio.fizzBurst(0.4, 0.5);
-          break;
+    if (D.flushBtn) {
+      D.flushBtn.addEventListener('click', () => {
+        AudioEngine.waterPour(0.6);
+        AudioEngine.stopBoilBubbles();
+        AudioEngine.stopBurnerHiss();
+        AudioEngine.stopStirWash();
+        engine.flush();
+        if (renderer) renderer.purgeParticles();
+        Titration.reset();
+        Log.warn('System flush — vessel returned to pure empty state.');
+        Telemetry.renderFormulaBanner(engine);
+        Telemetry.renderSpecies(engine);
+        if (D.flameSlider) D.flameSlider.value = 0;
+        if (D.stirrerSlider) D.stirrerSlider.value = 0;
+      });
+    }
 
-        case "metal-displacement":
-          this.audio.click(520);
-          break;
+    if (D.refillBtn) {
+      D.refillBtn.addEventListener('click', () => {
+        AudioEngine.waterPour(1.0);
+        engine.refill();
+        Log.info('Beaker refilled to 500 mL line.');
+        Telemetry.renderFormulaBanner(engine);
+        Telemetry.renderSpecies(engine);
+      });
+    }
 
-        case "neutralisation":
-          this.audio.splash(0.35);
-          if (e.deltaT > 8) this.audio.click(700);
-          break;
+    /* ----- stir button (momentary) ----- */
+    if (D.stirBtn) {
+      const stirHold = () => {
+        engine.stir(1.0);
+        AudioEngine.startStirWash(1.0);
+        D.stirBtn.classList.add('ring-2', 'ring-cyan-400');
+      };
+      const stirRelease = () => {
+        engine.stir(0);
+        AudioEngine.stopStirWash();
+        D.stirBtn.classList.remove('ring-2', 'ring-cyan-400');
+      };
+      D.stirBtn.addEventListener('pointerdown', stirHold);
+      D.stirBtn.addEventListener('pointerup', stirRelease);
+      D.stirBtn.addEventListener('pointerleave', stirRelease);
+      D.stirBtn.addEventListener('pointercancel', stirRelease);
+    }
 
+    /* ----- flame slider ----- */
+    if (D.flameSlider) {
+      let lastLogged = -1;
+      D.flameSlider.addEventListener('input', (e) => {
+        const v = parseFloat(e.target.value) / 100;
+        engine.applyHeat(v);
+        if (v > 0.02) {
+          if (!AudioEngine.isUnlocked) return;
+          // start or adjust burner hiss
+          if (!window.__burnerActive) {
+            AudioEngine.startBurnerHiss(v);
+            window.__burnerActive = true;
+          } else {
+            AudioEngine.setBurnerIntensity(v);
+          }
+          // log transitions
+          const band = Math.round(v * 4);
+          if (band !== lastLogged) {
+            const labels = ['off','gentle','medium','strong','roaring'];
+            Log.heat(`Burner: ${labels[band]} (${(v*100).toFixed(0)}%).`);
+            lastLogged = band;
+          }
+        } else {
+          AudioEngine.stopBurnerHiss();
+          window.__burnerActive = false;
+          if (lastLogged !== 0) {
+            Log.heat('Burner extinguished.');
+            lastLogged = 0;
+          }
+        }
+      });
+    }
+
+    /* ----- stirrer slider (continuous) ----- */
+    if (D.stirrerSlider) {
+      D.stirrerSlider.addEventListener('input', (e) => {
+        const v = parseFloat(e.target.value) / 100;
+        engine.stir(v);
+        if (v > 0.02) AudioEngine.startStirWash(v);
+        else AudioEngine.stopStirWash();
+      });
+    }
+
+    /* ----- titration slider ----- */
+    if (D.titrationSlider) {
+      D.titrationSlider.addEventListener('input', (e) => {
+        const ml = parseFloat(e.target.value);
+        // Determine which reagent to titrate — highest-priority acid or base
+        if (!Titration._lastReagent) {
+          // pick the most concentrated acid/base currently in solution
+          const s = engine.state;
+          let best = null, bestMoles = 0;
+          for (const [id, m] of Object.entries(s.molecular)) {
+            const sp = global.ChemicalsDB.get(id);
+            if (!sp) continue;
+            if ((sp.isAcid || sp.isBase) && m > bestMoles) {
+              bestMoles = m; best = id;
+            }
+          }
+          for (const [ion, m] of Object.entries(s.ions)) {
+            if ((ion === 'H+' || ion === 'OH-') && m > bestMoles) {
+              bestMoles = m;
+              best = ion === 'H+' ? 'hcl' : 'naoh';
+            }
+          }
+          if (best) Titration.setLastReagent(best);
+        }
+        Titration.apply(ml);
+        Telemetry.renderFormulaBanner(engine);
+        Telemetry.renderSpecies(engine);
+      });
+    }
+
+    /* ----- canvas click (tap beaker → subtle splash) ----- */
+    if (D.labCanvas) {
+      D.labCanvas.addEventListener('click', () => {
+        AudioEngine.glassTap();
+      });
+    }
+  }
+
+  /* ==========================================================================
+   * 10. ENGINE EVENT → UI HOOKS
+   * ========================================================================*/
+  function wireEngineEvents() {
+    const engine = global.ChemistryEngine;
+    const renderer = global.CanvasRenderer;
+    if (!engine || !engine.on) return;
+
+    engine.on((event, data) => {
+      switch (event) {
+        case 'reaction:alkali':
+          AudioEngine.explosion();
+          Log.reaction(`💥 Alkali metal detonation: ${data.metal.toUpperCase()}`);
+          if (renderer) renderer.burstExplosion(undefined, undefined, '#fb923c');
+          break;
+        case 'reaction:precipitate':
+          Log.reaction(`Precipitate formed: ${data.product} (${data.moles.toExponential(2)} mol)`);
+          break;
+        case 'reaction:neutralize':
+          Log.reaction(`Neutralisation: H⁺ + OH⁻ → H₂O (ΔH = −57.3 kJ/mol)`);
+          break;
+        case 'reaction:metal-acid':
+          Log.reaction(`Metal dissolution: ${data.metal.toUpperCase()} + H⁺ → H₂↑`);
+          AudioEngine.gasFizz(1.4);
+          break;
+        case 'reaction:gas':
+          Log.reaction(`Gas evolution: ${data.gas.toUpperCase()} (${data.moles.toExponential(2)} mol)`);
+          AudioEngine.gasFizz(1.2);
+          break;
+        case 'reaction:displace':
+          Log.reaction(`Single displacement: ${data.metal.toUpperCase()} + ${data.target}`);
+          break;
+        case 'vessel:cleared':
+        case 'vessel:flushed':
+          AudioEngine.stopBoilBubbles();
+          break;
+        case 'water:added':
+          // triggered by addWater engine-side
+          break;
         default:
           break;
       }
-    }
+    });
+  }
 
-    /* --- heat-driven audio --- */
-    if (e.deltaT && e.deltaT > 20) {
-      this.audio.explosion(Math.min(1.6, e.deltaT / 30));
-    }
-  };
+  /* ==========================================================================
+   * 11. TICK LOOP (drives engine + telemetry)
+   * ========================================================================*/
+  let _tickHandle = null;
+  let _boilingActive = false;
+  let _lastReactionLog = '';
+  let _reactionCooldown = 0;
 
-  /* ----------------------------------------------------------------------
-   * 2.11 Continuous audio loop sync
-   * -------------------------------------------------------------------- */
+  function startTick() {
+    const engine = global.ChemistryEngine;
+    if (!engine || _tickHandle) return;
+    let last = performance.now();
+    let telemetryAccum = 0;
+    let speciesAccum = 0;
+    const loop = (t) => {
+      _tickHandle = requestAnimationFrame(loop);
+      const dt = Math.min((t - last) / 1000, 0.1);
+      last = t;
 
-  App.prototype._syncAudioLoops = function () {
-    if (!this.engine) return;
-    var v = this.engine.vessel;
+      engine.tick(dt);
 
-    /* --- burner hiss tracks flame power --- */
-    this.audio.setBurnerHiss(v.flamePower);
+      // Boiling transitions
+      if (engine.state.boiling && !_boilingActive) {
+        AudioEngine.startBoilBubbles();
+        _boilingActive = true;
+      } else if (!engine.state.boiling && _boilingActive) {
+        AudioEngine.stopBoilBubbles();
+        _boilingActive = false;
+      }
 
-    /* --- boiling rumble tracks temperature --- */
-    var boiling = 0;
-    if (v.waterVolume > 0) {
-      if (v.temperature >= 373.15) boiling = 1.0;
-      else if (v.temperature > 358) boiling = (v.temperature - 358) / 15;
-    }
-    this.audio.setBoiling(boiling);
+      // Reaction log (throttled)
+      _reactionCooldown -= dt;
+      const lr = engine.state.lastReaction;
+      if (lr && lr !== _lastReactionLog && _reactionCooldown <= 0) {
+        // Only log interesting change
+        _lastReactionLog = lr;
+        _reactionCooldown = 1.2;
+      }
 
-    /* --- gas fizz tracks headspace gas accumulation rate --- */
-    var totalGas = 0;
-    for (var g in v.gases) {
-      if (Object.prototype.hasOwnProperty.call(v.gases, g)) totalGas += v.gases[g];
-    }
-    var delta = totalGas - this._lastGasMoles;
-    var fizz = 0;
-    if (delta > 0.005) fizz = Math.min(1, delta * 4);
-    else if (totalGas > 0.02 && this.engine.vessel.reactionCount > 0) fizz = 0.15;
-    this.audio.setGasFizz(fizz);
+      // Telemetry refresh ~10 Hz
+      telemetryAccum += dt;
+      if (telemetryAccum >= 0.1) {
+        telemetryAccum = 0;
+        Telemetry.update(engine);
+      }
 
-    this._lastGasMoles = totalGas;
-  };
+      // Species list refresh ~4 Hz
+      speciesAccum += dt;
+      if (speciesAccum >= 0.25) {
+        speciesAccum = 0;
+        Telemetry.renderSpecies(engine);
+        Telemetry.renderFormulaBanner(engine);
+      }
+    };
+    _tickHandle = requestAnimationFrame(loop);
+  }
 
-  /* ----------------------------------------------------------------------
-   * 2.12 Drain engine events that may not have been captured yet
-   * -------------------------------------------------------------------- */
+  /* ==========================================================================
+   * 12. BOOT
+   * ========================================================================*/
+  ready(() => {
+    cacheDom();
 
-  App.prototype._drainEngineEvents = function (freshReport) {
-    if (!this.engine || !this.engine.vessel) return;
+    // Log terminal
+    Log.init(D.logTerminal);
 
-    var events = null;
-    if (freshReport && freshReport.events && freshReport.events.length) {
-      events = freshReport.events;
-    } else if (this.engine.vessel.lastEvents && this.engine.vessel.lastEvents.length) {
-      events = this.engine.vessel.lastEvents;
-    }
-    if (!events) return;
-
-    /* Only new events are forwarded; track by count so nothing is doubled */
-    if (this._lastEventCount === events.length) return;
-
-    var slice = events.slice(this._lastEventCount);
-    this._lastEventCount = events.length;
-
-    for (var i = 0; i < slice.length; i++) {
-      this._log("event", this._formatEventMessage(slice[i]));
-      if (this.renderer) this.renderer.handleEvents([slice[i]]);
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.13 Titration
-   * -------------------------------------------------------------------- */
-
-  App.prototype._setTitrationRate = function (rate) {
-    var self = this;
-    if (this._titrationTimer) {
-      clearInterval(this._titrationTimer);
-      this._titrationTimer = null;
-    }
-    if (!(rate > 0.001)) {
-      this._log("system", "Titration stopped. Delivered " +
-        fmtNum(this._titrantVolumeAccumulated, 2) + " mL total.");
-      this._titrantVolumeAccumulated = 0;
+    // Engine sanity
+    if (!global.ChemicalsDB) {
+      console.error('[app] ChemicalsDB missing');
+      Log.error('Database failed to load — reagents unavailable.');
       return;
     }
-
-    this._log("system", "Titration started at rate " + (rate * 100).toFixed(0) +
-      " % with " + this._titrantId + " (" + this._titrantMolarity + " M).");
-
-    this._titrationTimer = setInterval(function () {
-      if (!self.engine) return;
-      var mL = rate * 0.4;                     // up to 0.4 mL per 250 ms at full rate
-      var moles = (mL / 1000) * self._titrantMolarity;
-      if (moles <= 0) return;
-
-      var report = self.engine.addChemical(self._titrantId, moles, "mol");
-      self._titrantVolumeAccumulated += mL;
-
-      /* Audio: repeated drip */
-      if (self.audio._throttle("drip", 180)) {
-        self.audio.splash(0.25);
-      }
-
-      /* Log only meaningful events, not every single drip */
-      if (report && report.events) {
-        for (var i = 0; i < report.events.length; i++) {
-          var e = report.events[i];
-          if (e.type === "reaction" || e.type === "combustion") {
-            self._handleReport({ events: [e], ok: true, species: null });
-          }
-        }
-      }
-
-      self._syncTelemetry();
-    }, 250);
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.14 Telemetry sync
-   * -------------------------------------------------------------------- */
-
-  App.prototype._syncTelemetry = function () {
-    if (!this.engine) return;
-    var v = this.engine.vessel;
-
-    var snap = {
-      temperatureC: v.temperature - 273.15,
-      temperatureK: v.temperature,
-      pH: v.pH,
-      volumeML: v.waterVolume * 1000,
-      molarity: v.molarity || {},
-      precipMass: v.precipitates.reduce(function (a, b) { return a + b.mass; }, 0),
-      solidMass: v.solids.reduce(function (a, b) { return a + b.mass; }, 0),
-      gasMoles: 0,
-      gasVolumeL: 0,
-      heatJ: v.heatExchanged,
-      reactionCount: v.reactionCount,
-      turbidity: v.turbidity,
-      colour: v.colour,
-      stirring: v.stirring,
-      stirRate: v.stirRate,
-      flamePower: v.flamePower
-    };
-
-    for (var g in v.gases) {
-      if (Object.prototype.hasOwnProperty.call(v.gases, g)) {
-        snap.gasMoles += v.gases[g];
-      }
+    if (!global.ChemistryEngine) {
+      console.error('[app] ChemistryEngine missing');
+      Log.error('Engine failed to load.');
+      return;
     }
-    snap.gasVolumeL = snap.gasMoles * 22.4136;
-
-    /* ---- update DOM fields ---- */
-    this._setField("temperature", fmtNum(snap.temperatureC, 1) + " °C");
-    this._setField("temperatureK", fmtNum(snap.temperatureK, 2) + " K");
-    this._setField("ph", snap.pH === null ? "—" : snap.pH.toFixed(2));
-    this._setField("volume", fmtNum(snap.volumeML, 1) + " mL");
-    this._setField("precipitate", fmtNum(snap.precipMass, 3) + " g");
-    this._setField("solid", fmtNum(snap.solidMass, 3) + " g");
-    this._setField("gas", fmtNum(snap.gasMoles, 4) + " mol");
-    this._setField("gasVolume", fmtNum(snap.gasVolumeL, 3) + " L");
-    this._setField("heat", fmtNum(snap.heatJ / 1000, 2) + " kJ");
-    this._setField("reactions", String(snap.reactionCount));
-    this._setField("turbidity", (snap.turbidity * 100).toFixed(0) + " %");
-    this._setField("stirring", snap.stirring ? (snap.stirRate * 100).toFixed(0) + " %" : "off");
-    this._setField("flame", snap.flamePower > 0.02 ? (snap.flamePower * 100).toFixed(0) + " %" : "off");
-
-    /* ---- direct-ID variants ---- */
-    this._setById("tempReadout", fmtNum(snap.temperatureC, 1) + " °C");
-    this._setById("phReadout", snap.pH === null ? "—" : snap.pH.toFixed(2));
-    this._setById("volumeReadout", fmtNum(snap.volumeML, 1) + " mL");
-    this._setById("gasReadout", fmtNum(snap.gasVolumeL, 3) + " L");
-    this._setById("precipReadout", fmtNum(snap.precipMass, 3) + " g");
-
-    /* ---- colour the pH readout ---- */
-    var phEls = $$("[data-telemetry='ph'], #phReadout");
-    for (var i = 0; i < phEls.length; i++) {
-      var el2 = phEls[i];
-      var ph = snap.pH;
-      var col = "#e6f4ff";
-      if (ph !== null) {
-        if (ph < 3) col = "#ff7050";
-        else if (ph < 6) col = "#ffb060";
-        else if (ph > 11) col = "#8080ff";
-        else if (ph > 8) col = "#80b0ff";
-        else col = "#80e0a0";
-      }
-      el2.style.color = col;
+    if (!global.CanvasRenderer) {
+      console.warn('[app] CanvasRenderer missing');
+      Log.warn('Canvas renderer unavailable.');
     }
 
-    /* ---- solution swatch ---- */
-    var swatch = document.getElementById("solutionSwatch");
-    if (swatch) {
-      swatch.style.background = snap.colour || "#cfe8ff";
-    }
-  };
+    // Build reagent modal
+    ReagentModal.build();
 
-  App.prototype._setField = function (name, value) {
-    var nodes = $$("[data-telemetry='" + name + "']");
-    for (var i = 0; i < nodes.length; i++) {
-      nodes[i].textContent = value;
-    }
-  };
+    // Wire everything
+    wireEvents();
+    wireEngineEvents();
 
-  App.prototype._setById = function (id, value) {
-    var node = document.getElementById(id);
-    if (node) node.textContent = value;
-  };
+    // Initial UI state
+    Telemetry.update(global.ChemistryEngine);
+    Telemetry.renderSpecies(global.ChemistryEngine);
+    Telemetry.renderFormulaBanner(global.ChemistryEngine);
 
-  /* ----------------------------------------------------------------------
-   * 2.15 Formula banner
-   * -------------------------------------------------------------------- */
+    // Start telemetry tick loop
+    startTick();
 
-  App.prototype._setFormulaBanner = function (text, tone, meta) {
-    var banner = this.ui.formulaBanner;
-    if (!banner) return;
-
-    var toneClass = "vl-banner-" + (tone || "idle");
-    var tones = ["vl-banner-idle", "vl-banner-info", "vl-banner-reaction",
-                 "vl-banner-exo", "vl-banner-endo", "vl-banner-toxic",
-                 "vl-banner-danger"];
-
-    for (var i = 0; i < tones.length; i++) {
-      banner.classList.remove(tones[i]);
-    }
-    banner.classList.add(toneClass);
-
-    var html = "<span class='vl-banner-text'>" + escapeHtml(text) + "</span>";
-
-    if (meta) {
-      var badges = [];
-      if (meta.enthalpyFlag) {
-        var flagClass = meta.enthalpyFlag === "EXOTHERMIC" ? "vl-tag-exo"
-                      : meta.enthalpyFlag === "ENDOTHERMIC" ? "vl-tag-endo"
-                      : "vl-tag-neutral";
-        badges.push("<span class='vl-tag " + flagClass + "'>" + escapeHtml(meta.enthalpyFlag) + "</span>");
-      }
-      if (meta.deltaH !== null && meta.deltaH !== undefined && !isNaN(meta.deltaH)) {
-        var sign = meta.deltaH > 0 ? "+" : "";
-        badges.push("<span class='vl-tag vl-tag-dh'>ΔH° " + sign + fmtNum(meta.deltaH, 1) + " kJ/mol</span>");
-      }
-      if (meta.gasVolumeL) {
-        badges.push("<span class='vl-tag vl-tag-gas'>" + fmtNum(meta.gasVolumeL, 3) + " L gas @ STP</span>");
-      }
-      if (meta.precipitateMassG) {
-        badges.push("<span class='vl-tag vl-tag-precip'>" + fmtNum(meta.precipitateMassG, 3) + " g precipitate</span>");
-      }
-      if (meta.toxicGas) {
-        badges.push("<span class='vl-tag vl-tag-toxic'>⚠ " + escapeHtml(meta.toxicGas) + "</span>");
-      }
-      if (meta.ignition) {
-        badges.push("<span class='vl-tag vl-tag-danger'>🔥 IGNITION</span>");
-      }
-      if (badges.length) {
-        html += "<span class='vl-banner-tags'>" + badges.join("") + "</span>";
-      }
+    // Hide modal by default
+    if (D.reagentModal) {
+      D.reagentModal.classList.add('hidden');
+      D.reagentModal.classList.remove('flex');
     }
 
-    banner.innerHTML = html;
-
-    /* brief pulse to draw attention */
-    banner.classList.remove("vl-banner-pulse");
-    /* force reflow to restart the animation */
-    void banner.offsetWidth;
-    banner.classList.add("vl-banner-pulse");
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.16 Log terminal
-   * -------------------------------------------------------------------- */
-
-  App.prototype._log = function (level, message) {
-    var term = this.ui.logTerminal;
-    if (!term) return;
-
-    var ts = new Date();
-    var hh = ("0" + ts.getHours()).slice(-2);
-    var mm = ("0" + ts.getMinutes()).slice(-2);
-    var ss = ("0" + ts.getSeconds()).slice(-2);
-    var time = hh + ":" + mm + ":" + ss;
-
-    var line = el("div", {
-      class: "vl-log-line vl-log-" + (level || "info")
-    }, [
-      el("span", { class: "vl-log-time", text: time }),
-      el("span", { class: "vl-log-msg", text: message })
-    ]);
-
-    term.appendChild(line);
-    this._logCount++;
-
-    /* cap the log at 240 lines */
-    while (term.children.length > 240) {
-      term.removeChild(term.firstChild);
-    }
-
-    /* autoscroll if the user hasn't scrolled up */
-    var nearBottom = term.scrollHeight - term.scrollTop - term.clientHeight < 80;
-    if (nearBottom) {
-      term.scrollTop = term.scrollHeight;
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 2.17 Public teardown
-   * -------------------------------------------------------------------- */
-
-  App.prototype.destroy = function () {
-    if (this._telemetryTimer) {
-      clearInterval(this._telemetryTimer);
-      this._telemetryTimer = null;
-    }
-    if (this._titrationTimer) {
-      clearInterval(this._titrationTimer);
-      this._titrationTimer = null;
-    }
-    this.audio.stopAllLoops();
-    if (this.renderer) this.renderer.stop();
-    if (this.audio.ctx) {
-      try { this.audio.ctx.close(); } catch (e) { /* ignore */ }
-    }
-  };
+    Log.success('VirtuaLab Pro ready. ' +
+      `Loaded ${global.ChemicalsDB.list().length} reagent species.`);
+  });
 
   /* ==========================================================================
-   * 3. BOOTSTRAP
+   * 13. EXPORT (for debugging)
    * ========================================================================*/
+  global.VirtuaLabApp = {
+    VERSION,
+    AudioEngine,
+    Log,
+    Telemetry,
+    ReagentModal,
+    Titration,
+    addReagent
+  };
 
-  function bootstrap() {
-    var app = new App();
-    window.__virtuaLabApp = app;
-    try {
-      app.boot();
-    } catch (err) {
-      console.error("[VirtuaLabApp] Boot failure:", err);
-      var term = document.getElementById("logTerminal");
-      if (term) {
-        var line = document.createElement("div");
-        line.className = "vl-log-line vl-log-error";
-        line.textContent = "Boot error: " + err.message;
-        term.appendChild(line);
-      }
-    }
-    return app;
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug(`[app v${VERSION}] Wire-up module loaded.`);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bootstrap);
-  } else {
-    /* DOM already parsed (e.g. defer order guarantees it) */
-    bootstrap();
-  }
-
-  /* ==========================================================================
-   * 4. PUBLIC NAMESPACE
-   * ========================================================================*/
-
-  var API = App;
-  API.AudioSynth = AudioSynth;
-  API.helpers = { $: $, $$: $$, el: el };
-  API.bootstrap = bootstrap;
-
-  if (typeof console !== "undefined" && console.log) {
-    console.log(
-      "%c VirtuaLab Pro %c app.js loaded — DOM bindings, Web Audio synth and telemetry ready.",
-      "background:#0b7285;color:#fff;padding:2px 6px;border-radius:3px 0 0 3px;font-weight:700",
-      "background:#e3fafc;color:#0b7285;padding:2px 6px;border-radius:0 3px 3px 0"
-    );
-  }
-
-  return API;
-})();
+})(typeof window !== 'undefined' ? window : globalThis);
