@@ -1,1958 +1,1087 @@
 /* ============================================================================
  * VirtuaLab Pro — canvas.js
  * ----------------------------------------------------------------------------
- * HTML5 canvas renderer: beaker, liquid, flame, stirrer vortex, precipitate
- * settling, gas clouds, ignition flashes, screen shake and shockwaves.
- *
- * GLOBAL NAMESPACE : window.CanvasRenderer
- * DEPENDS ON       : window.ChemicalsDB, window.ChemistryEngine
- *
- * PUBLIC API
+ * HTML5 Canvas Graphics & Particle Physics Engine
+ * Author: VirtuaLab Pro Frontend Graphics Core
  * ----------------------------------------------------------------------------
- *   var r = new CanvasRenderer(canvasElement, engineInstance);
- *   r.start();               // begin the requestAnimationFrame loop
- *   r.stop();                // halt the loop
- *   r.resize();              // re-measure the canvas (DPR-aware)
- *   r.handleEvents(events);  // feed engine.vessel.lastEvents for FX
- *   r.triggerShake(mag);     // screen shake amplitude in px
- *   r.triggerFlash(color, a) // full-screen colour flash
- *   r.triggerShockwave(x,y,c,r) // expanding particle ring
+ * EXPORTS: window.CanvasRenderer  (singleton)
+ *
+ * RENDERS (into #labCanvas):
+ *   • 500 mL borosilicate beaker with glass highlights & graduation marks
+ *   • Dynamic fluid column with wave physics + meniscus curvature
+ *   • Colour-blended solution tinting (indicator-aware)
+ *   • Realistic Bunsen burner flame below the beaker (heatIntensity > 0)
+ *     — outer cone tint shifts per active metal (Na/K/Cu/Li flame tests)
+ *   • Volumetric smoke clouds for NO2 / Cl2 / SO2 / NH3
+ *   • Bubble effervescence during gas evolution & boiling
+ *   • Precipitate sediment settling with Stokes-like fall physics
+ *   • Ambient steam wisps when T ≥ 60 °C
+ *
+ * DEPENDS ON: window.ChemistryEngine, window.ChemicalsDB
  * ==========================================================================*/
 
-window.CanvasRenderer = (function () {
-  "use strict";
+(function (global) {
+  'use strict';
+
+  const VERSION = '1.0.0';
 
   /* ==========================================================================
-   * 1. SMALL MATH / COLOUR UTILITIES
+   * 1. DESIGN CONSTANTS
    * ========================================================================*/
+  const VESSEL = {
+    WIDTH_RATIO:  0.42,     // beaker width / canvas min dimension
+    HEIGHT_RATIO: 0.62,     // beaker height / canvas height
+    WALL:         4,        // glass thickness (px)
+    LIP:          14,       // rim lip width (px)
+    BOTTOM_R:     10,       // bottom corner radius
+    MAX_VOLUME:   500       // mL capacity
+  };
 
-  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  const FLUID = {
+    SURFACE_WAVES:  5,
+    WAVE_AMP:       2.2,
+    WAVE_SPEED:     0.9,
+    MENISCUS_DEPTH: 6,
+    MENISCUS_WIDTH: 14,
+    OPACITY:        0.72
+  };
 
-  function lerp(a, b, t) { return a + (b - a) * t; }
+  const COLORS = {
+    bgTop:      '#020617',
+    bgBottom:   '#0f172a',
+    tableTop:   '#1e293b',
+    tableEdge:  '#0f172a',
+    glass:      'rgba(226,232,240,0.16)',
+    glassEdge:  'rgba(148,163,184,0.65)',
+    glassHi:    'rgba(255,255,255,0.22)',
+    glassLow:   'rgba(15,23,42,0.35)',
+    meniscus:   'rgba(255,255,255,0.28)',
+    graduation:'rgba(203,213,225,0.45)',
+    flameCore:  '#bfdbfe',
+    flameMid:   '#60a5fa',
+    flameOut:   '#3b82f6',
+    flameTip:   'rgba(59,130,246,0.0)'
+  };
 
-  function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+  /* ==========================================================================
+   * 2. MATH HELPERS
+   * ========================================================================*/
+  const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+  const lerp  = (a, b, t) => a + (b - a) * t;
+  const rand  = (a, b) => a + Math.random() * (b - a);
 
   function hexToRgb(hex) {
-    if (typeof hex !== "string" || hex[0] !== "#") return { r: 200, g: 200, b: 200 };
-    var h = hex.slice(1);
-    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-    var n = parseInt(h, 16);
-    if (isNaN(n)) return { r: 200, g: 200, b: 200 };
-    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    if (!hex) return { r: 200, g: 220, b: 240 };
+    if (hex.startsWith('rgba') || hex.startsWith('rgb')) {
+      const m = hex.match(/[\d.]+/g);
+      return { r: +m[0], g: +m[1], b: +m[2] };
+    }
+    const h = hex.replace('#', '');
+    const v = h.length === 3
+      ? h.split('').map(c => parseInt(c + c, 16))
+      : [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)];
+    return { r: v[0]||0, g: v[1]||0, b: v[2]||0 };
   }
 
-  function rgbToHex(r, g, b) {
-    r = clamp(Math.round(r), 0, 255);
-    g = clamp(Math.round(g), 0, 255);
-    b = clamp(Math.round(b), 0, 255);
-    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  function rgba(hex, a) {
+    const c = hexToRgb(hex);
+    return `rgba(${c.r},${c.g},${c.b},${a})`;
   }
-
-  function mixHex(a, b, t) {
-    var ca = hexToRgb(a), cb = hexToRgb(b);
-    return rgbToHex(
-      ca.r + (cb.r - ca.r) * t,
-      ca.g + (cb.g - ca.g) * t,
-      ca.b + (cb.b - ca.b) * t
-    );
-  }
-
-  function rgba(hex, alpha) {
-    var c = hexToRgb(hex);
-    return "rgba(" + c.r + "," + c.g + "," + c.b + "," + clamp(alpha, 0, 1) + ")";
-  }
-
-  /* ==========================================================================
-   * 2. COLOUR REFERENCE TABLES
-   * ========================================================================*/
-
-  /* Characteristic flame emission colours for common metal ions. */
-  var ION_FLAME_COLORS = {
-    Li: { inner: "#ffe0d0", mid: "#ff6a5a", outer: "#d02020", glow: "#ff4030" },
-    Na: { inner: "#fff4c0", mid: "#ffd24a", outer: "#ff8c00", glow: "#ffb000" },
-    K:  { inner: "#f0e0ff", mid: "#d0a0ff", outer: "#a06ac0", glow: "#c08ae0" },
-    Rb: { inner: "#ffe0ea", mid: "#ff80a0", outer: "#c03060", glow: "#e05080" },
-    Cs: { inner: "#e0e0ff", mid: "#a0a0ff", outer: "#4040c0", glow: "#6060e0" },
-    Ca: { inner: "#ffe0c0", mid: "#ff9a4a", outer: "#e04020", glow: "#ff6020" },
-    Sr: { inner: "#ffe0e0", mid: "#ff5060", outer: "#c01030", glow: "#e03050" },
-    Ba: { inner: "#eaf6c0", mid: "#a8e070", outer: "#60a030", glow: "#80c040" },
-    Cu: { inner: "#d0fff0", mid: "#7ae0c0", outer: "#20a080", glow: "#40c0a0" }
-  };
-
-  /* Default Bunsen flame palette (no metal present). */
-  var DEFAULT_FLAME = {
-    inner: "#dff2ff",
-    mid:   "#7ec8ff",
-    outer: "#3a90e0",
-    glow:  "#8ac8ff",
-    tip:   "#ffb050"
-  };
-
-  /* Gas cloud colours keyed by species id. */
-  var GAS_COLORS = {
-    NO2:      { color: "#a04a20", dark: true,  density: 0.9 },
-    N2O4:     { color: "#c0a080", dark: false, density: 0.8 },
-    Cl2:      { color: "#d8e860", dark: false, density: 0.85 },
-    Br2:      { color: "#b04020", dark: true,  density: 0.9 },
-    I2:       { color: "#8040a0", dark: true,  density: 0.8 },
-    SO2:      { color: "#d8dcc0", dark: false, density: 0.5 },
-    H2S:      { color: "#e8e0a0", dark: false, density: 0.55 },
-    NH3:      { color: "#e8f4ff", dark: false, density: 0.4 },
-    CO2:      { color: "#e8e8e8", dark: false, density: 0.35 },
-    CO:       { color: "#d0d0d0", dark: false, density: 0.3 },
-    H2:       { color: "#f0f4ff", dark: false, density: 0.15 },
-    O2:       { color: "#f0f8ff", dark: false, density: 0.15 },
-    N2:       { color: "#eef6ff", dark: false, density: 0.15 },
-    CH4:      { color: "#eef6ee", dark: false, density: 0.2 },
-    C2H2:     { color: "#e8f4e8", dark: false, density: 0.2 },
-    C2H4:     { color: "#eef8ee", dark: false, density: 0.2 },
-    C3H8:     { color: "#f0f6ee", dark: false, density: 0.2 },
-    C4H10:    { color: "#f2f8ee", dark: false, density: 0.2 },
-    H2O:      { color: "#f8fcff", dark: false, density: 0.25 },
-    steam:    { color: "#f8fcff", dark: false, density: 0.25 }
-  };
 
   /* ==========================================================================
    * 3. PARTICLE CLASSES
    * ========================================================================*/
 
-  function Particle(opts) {
-    this.x = opts.x;
-    this.y = opts.y;
-    this.vx = opts.vx || 0;
-    this.vy = opts.vy || 0;
-    this.r = opts.r || 2;
-    this.color = opts.color || "#cccccc";
-    this.life = 1;
-    this.decay = opts.decay || 0.35;
-    this.settled = false;
-    this.rotation = Math.random() * Math.PI * 2;
-    this.rotationSpeed = opts.rotationSpeed || rand(-2, 2);
-    this.settleY = opts.settleY || 0;
-    this.wobble = Math.random() * Math.PI * 2;
+  /* ---- Bubble (effervescence / boiling) ------------------------------- */
+  function Bubble(x, y, radius, color) {
+    this.x = x;
+    this.y = y;
+    this.r = radius;
+    this.vx = rand(-6, 6);
+    this.vy = rand(-55, -25);
+    this.wobble = rand(0, Math.PI * 2);
+    this.wobbleSpeed = rand(1.5, 3.0);
+    this.age = 0;
+    this.life = rand(0.9, 2.2);
+    this.color = color || '#e2e8f0';
+    this.dead = false;
   }
-
-  Particle.prototype.update = function (dt, geom) {
-    if (this.settled) return;
-    this.wobble += dt * 5;
-    this.vy += 180 * dt;                                  // gravity
-    this.vx += Math.sin(this.wobble) * 6 * dt;            // turbulence
-    this.vx *= (1 - 1.4 * dt);
-    this.vy *= (1 - 0.6 * dt);
-    this.x += this.vx * dt;
+  Bubble.prototype.update = function (dt, surfaceY) {
+    this.age += dt;
+    this.wobble += this.wobbleSpeed * dt;
+    this.x += (this.vx + Math.sin(this.wobble) * 8) * dt;
     this.y += this.vy * dt;
-    this.rotation += this.rotationSpeed * dt;
-
-    /* wall collisions */
-    if (this.x < geom.innerLeft + this.r) {
-      this.x = geom.innerLeft + this.r;
-      this.vx = Math.abs(this.vx) * 0.4;
-    }
-    if (this.x > geom.innerRight - this.r) {
-      this.x = geom.innerRight - this.r;
-      this.vx = -Math.abs(this.vx) * 0.4;
-    }
-
-    /* settle at the bottom */
-    if (this.y >= this.settleY - this.r) {
-      this.y = this.settleY - this.r;
-      this.vy = 0;
-      this.vx = 0;
-      this.settled = true;
-    }
+    if (this.y - this.r <= surfaceY || this.age >= this.life) this.dead = true;
+  };
+  Bubble.prototype.draw = function (ctx) {
+    const alpha = clamp(1 - (this.age / this.life), 0, 1);
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.75;
+    // bubble shell
+    const g = ctx.createRadialGradient(
+      this.x - this.r * 0.3, this.y - this.r * 0.3, this.r * 0.1,
+      this.x, this.y, this.r
+    );
+    g.addColorStop(0, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.6, rgba(this.color, 0.35));
+    g.addColorStop(1, 'rgba(255,255,255,0.05)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+    // rim highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.restore();
   };
 
-  Particle.prototype.draw = function (ctx) {
+  /* ---- Smoke puff (NO2 / Cl2 / SO2 / steam) --------------------------- */
+  function Smoke(x, y, color, opts) {
+    opts = opts || {};
+    this.x = x;
+    this.y = y;
+    this.vx = opts.vx !== undefined ? opts.vx : rand(-18, 18);
+    this.vy = opts.vy !== undefined ? opts.vy : rand(-38, -22);
+    this.r = opts.r || rand(14, 26);
+    this.rGrow = opts.rGrow || rand(12, 22);
+    this.color = color || '#b45309';
+    this.age = 0;
+    this.life = opts.life || rand(2.4, 4.5);
+    this.rot = rand(0, Math.PI * 2);
+    this.rotSpd = rand(-0.6, 0.6);
+    this.dead = false;
+    this.alpha0 = opts.alpha !== undefined ? opts.alpha : 0.32;
+  }
+  Smoke.prototype.update = function (dt) {
+    this.age += dt;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.r += this.rGrow * dt;
+    this.rot += this.rotSpd * dt;
+    this.vy *= 0.985;   // buoyancy decay
+    if (this.age >= this.life) this.dead = true;
+  };
+  Smoke.prototype.draw = function (ctx) {
+    const t = this.age / this.life;
+    const alpha = this.alpha0 * (1 - t) * Math.min(1, t * 6);
+    if (alpha <= 0.005) return;
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.translate(this.x, this.y);
-    ctx.rotate(this.rotation);
-    ctx.fillStyle = this.color;
-    ctx.globalAlpha = this.life;
+    ctx.rotate(this.rot);
+    const c = hexToRgb(this.color);
+    const g = ctx.createRadialGradient(0, 0, this.r * 0.15, 0, 0, this.r);
+    g.addColorStop(0,   `rgba(${c.r},${c.g},${c.b},0.9)`);
+    g.addColorStop(0.5, `rgba(${c.r},${c.g},${c.b},0.45)`);
+    g.addColorStop(1,   `rgba(${c.r},${c.g},${c.b},0)`);
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(0, 0, this.r, 0, Math.PI * 2);
     ctx.fill();
-    /* subtle highlight */
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.beginPath();
-    ctx.arc(-this.r * 0.3, -this.r * 0.3, this.r * 0.4, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   };
 
-  /* ---------------------------------------------------------------------- */
-
-  function Bubble(opts) {
-    this.x = opts.x;
-    this.y = opts.y;
-    this.r = opts.r || 2;
-    this.vy = opts.vy || rand(-55, -30);
-    this.life = 1;
-    this.wobble = Math.random() * Math.PI * 2;
-    this.wobbleSpeed = rand(2, 5);
-    this.riseLimit = opts.riseLimit || 0;
+  /* ---- Sediment flake (precipitate settling) -------------------------- */
+  function Sediment(x, y, size, color) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.color = color || '#ffffff';
+    this.vy = rand(4, 12);          // settle velocity
+    this.vx = rand(-3, 3);
+    this.rot = rand(0, Math.PI * 2);
+    this.rotSpd = rand(-1.2, 1.2);
+    this.dead = false;
+    this.settled = false;
+    this.restY = 0;
   }
-
-  Bubble.prototype.update = function (dt, geom) {
-    this.wobble += dt * this.wobbleSpeed;
-    this.y += this.vy * dt;
-    this.x += Math.sin(this.wobble) * 8 * dt;
-    this.r *= (1 + 0.35 * dt);
-
-    /* clamp inside the beaker walls */
-    if (this.x < geom.innerLeft + this.r) this.x = geom.innerLeft + this.r;
-    if (this.x > geom.innerRight - this.r) this.x = geom.innerRight - this.r;
-
-    /* pop when reaching the surface */
-    var surfaceY = this.surfaceY !== undefined ? this.surfaceY : geom.beakerTopY;
-    if (this.y <= surfaceY + 4) this.life = 0;
-  };
-
-  Bubble.prototype.draw = function (ctx) {
-    ctx.save();
-    ctx.globalAlpha = 0.55 * this.life;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.75)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    /* highlight dot */
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.beginPath();
-    ctx.arc(this.x - this.r * 0.35, this.y - this.r * 0.35, this.r * 0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  };
-
-  /* ---------------------------------------------------------------------- */
-
-  function GasPuff(opts) {
-    this.x = opts.x;
-    this.y = opts.y;
-    this.vx = opts.vx !== undefined ? opts.vx : rand(-12, 12);
-    this.vy = opts.vy !== undefined ? opts.vy : rand(-38, -22);
-    this.r = opts.r || 6;
-    this.maxR = opts.maxR || 42;
-    this.life = 1;
-    this.decay = opts.decay || 0.5;
-    this.color = opts.color || "#e8e8e8";
-    this.density = opts.density || 0.5;
-    this.seed = Math.random() * 1000;
-  }
-
-  GasPuff.prototype.update = function (dt) {
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
-    this.vx += Math.sin((this.seed + performance.now() * 0.001) * 1.5) * 4 * dt;
-    this.vy *= (1 - 0.25 * dt);
-    this.vx *= (1 - 0.5 * dt);
-    this.r += (this.maxR - this.r) * 1.4 * dt;
-    this.life -= this.decay * dt;
-  };
-
-  GasPuff.prototype.draw = function (ctx) {
-    if (this.life <= 0) return;
-    var alpha = this.life * this.life * (0.35 + this.density * 0.45);
-    var grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r);
-    grad.addColorStop(0, rgba(this.color, alpha));
-    grad.addColorStop(0.55, rgba(this.color, alpha * 0.55));
-    grad.addColorStop(1, rgba(this.color, 0));
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-    ctx.fill();
-  };
-
-  /* ---------------------------------------------------------------------- */
-
-  function Spark(opts) {
-    this.x = opts.x;
-    this.y = opts.y;
-    this.vx = opts.vx || 0;
-    this.vy = opts.vy || 0;
-    this.life = 1;
-    this.decay = opts.decay || 1.6;
-    this.color = opts.color || "#ffd24a";
-    this.size = opts.size || 2.2;
-    this.trailX = this.x;
-    this.trailY = this.y;
-  }
-
-  Spark.prototype.update = function (dt) {
-    this.trailX = this.x;
-    this.trailY = this.y;
-    this.vy += 90 * dt;
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
-    this.life -= this.decay * dt;
-  };
-
-  Spark.prototype.draw = function (ctx) {
-    if (this.life <= 0) return;
-    ctx.save();
-    ctx.globalAlpha = clamp(this.life, 0, 1);
-    /* trail */
-    var grad = ctx.createLinearGradient(this.trailX, this.trailY, this.x, this.y);
-    grad.addColorStop(0, rgba(this.color, 0));
-    grad.addColorStop(1, rgba(this.color, 0.85));
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = this.size;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(this.trailX, this.trailY);
-    ctx.lineTo(this.x, this.y);
-    ctx.stroke();
-    /* glowing head */
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size * 0.8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  };
-
-  /* ---------------------------------------------------------------------- */
-
-  function Shockwave(opts) {
-    this.x = opts.x;
-    this.y = opts.y;
-    this.r = opts.r || 8;
-    this.maxR = opts.maxR || 220;
-    this.life = 1;
-    this.decay = opts.decay || 1.1;
-    this.color = opts.color || "#ffffff";
-    this.lineWidth = opts.lineWidth || 3;
-  }
-
-  Shockwave.prototype.update = function (dt) {
-    var speed = (this.maxR - this.r) * 3.5 + 100;
-    this.r += speed * dt;
-    this.life -= this.decay * dt;
-  };
-
-  Shockwave.prototype.draw = function (ctx) {
-    if (this.life <= 0) return;
-    ctx.save();
-    ctx.globalAlpha = clamp(this.life, 0, 1) * 0.9;
-    ctx.strokeStyle = this.color;
-    ctx.lineWidth = this.lineWidth * this.life;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-    ctx.stroke();
-    /* inner ring */
-    if (this.r > 24) {
-      ctx.globalAlpha *= 0.35;
-      ctx.lineWidth = Math.max(1, this.lineWidth * 0.4 * this.life);
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.r * 0.72, 0, Math.PI * 2);
-      ctx.stroke();
+  Sediment.prototype.update = function (dt, floorY) {
+    if (this.settled) {
+      this.rot += this.rotSpd * dt * 0.15;
+      return;
     }
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.rot += this.rotSpd * dt;
+    this.vy = Math.min(this.vy + 6 * dt, 40);
+    if (this.y >= floorY - this.size) {
+      this.y = floorY - this.size;
+      this.settled = true;
+    }
+  };
+  Sediment.prototype.draw = function (ctx) {
+    ctx.save();
+    ctx.globalAlpha = this.settled ? 0.9 : 0.7;
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rot);
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.rect(-this.size / 2, -this.size / 2, this.size, this.size * 0.85);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  /* ---- Metal chunk / solid crystal ------------------------------------ */
+  function SolidChip(x, y, size, color, isMetal) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.color = color;
+    this.isMetal = !!isMetal;
+    this.rot = rand(0, Math.PI * 2);
+    this.rotSpd = rand(-0.4, 0.4);
+    this.settled = false;
+    this.bobPhase = rand(0, Math.PI * 2);
+    this.dead = false;
+  }
+  SolidChip.prototype.update = function (dt, floorY, fluidTopY, fluidBotY, isDry) {
+    if (isDry) {
+      // stays put as crystal on bottom
+      this.settled = true;
+      this.rot += this.rotSpd * dt * 0.2;
+      return;
+    }
+    if (!this.settled) {
+      this.y += 90 * dt;
+      this.rot += this.rotSpd * dt;
+      if (this.y >= floorY - this.size * 0.5) {
+        this.y = floorY - this.size * 0.5;
+        this.settled = true;
+      }
+    } else {
+      // gentle thermal jitter when fluid is present
+      this.bobPhase += dt * 1.2;
+      this.x += Math.sin(this.bobPhase) * 0.15;
+    }
+  };
+  SolidChip.prototype.draw = function (ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rot);
+    const s = this.size;
+    // body
+    const g = ctx.createLinearGradient(-s, -s, s, s);
+    const base = hexToRgb(this.color);
+    g.addColorStop(0, `rgba(${Math.min(255,base.r+30)},${Math.min(255,base.g+30)},${Math.min(255,base.b+30)},1)`);
+    g.addColorStop(1, `rgba(${base.r},${base.g},${base.b},1)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    if (this.isMetal) {
+      // irregular polygon chip
+      ctx.moveTo(-s, 0);
+      ctx.lineTo(-s * 0.4, -s * 0.8);
+      ctx.lineTo(s * 0.6, -s * 0.5);
+      ctx.lineTo(s, s * 0.2);
+      ctx.lineTo(s * 0.3, s * 0.9);
+      ctx.lineTo(-s * 0.7, s * 0.6);
+      ctx.closePath();
+    } else {
+      // crystal rhombus
+      ctx.moveTo(0, -s);
+      ctx.lineTo(s * 0.75, 0);
+      ctx.lineTo(0, s);
+      ctx.lineTo(-s * 0.75, 0);
+      ctx.closePath();
+    }
+    ctx.fill();
+    // specular highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
     ctx.restore();
   };
 
   /* ==========================================================================
-   * 4. GEOMETRY
+   * 4. CANVAS RENDERER SINGLETON
    * ========================================================================*/
+  function CanvasRenderer() {
+    this.canvas = null;
+    this.ctx = null;
+    this.width = 0;
+    this.height = 0;
+    this.dpr = 1;
+    this.running = false;
+    this.lastT = 0;
+    this.time = 0;
 
-  function computeGeometry(W, H) {
-    var cx = W * 0.5;
+    // particle pools
+    this.bubbles  = [];
+    this.smokes   = [];
+    this.sediments = [];
+    this.chips    = [];
 
-    /* Vertical layout — proportions of canvas height */
-    var benchY   = H * 0.955;                        // top of the bench surface
-    var benchH   = H * 0.055;
+    // fluid surface wave state (phase per wave component)
+    this.wavePhase = [0, 1.3, 2.5, 3.7, 4.9];
 
-    /* Beaker sits on a wire gauze held above the burner */
-    var beakerH  = Math.min(H * 0.46, 300);
-    var beakerW  = beakerH * 0.72;
-    var gauzeY   = Math.max(H * 0.62, benchY - 210); // beaker bottom / gauze line
-    var beakerTopY = gauzeY - beakerH;
+    // cached geometry (recomputed on resize)
+    this.geo = null;
 
-    /* Burner barrel */
-    var burnerTopY = gauzeY + Math.max(45, (benchY - gauzeY) * 0.62);
+    // smoke spawn accumulators
+    this._smokeAccum = {};
+    this._bubbleAccum = 0;
+    this._steamAccum = 0;
 
-    return {
-      W: W,
-      H: H,
-      cx: cx,
+    // flame flicker
+    this._flameT = 0;
 
-      benchY: benchY,
-      benchH: benchH,
-
-      burnerBaseY: benchY,
-      burnerTopY: burnerTopY,
-      burnerW: 22,
-
-      gauzeY: gauzeY,
-
-      beakerX: cx,
-      beakerW: beakerW,
-      beakerH: beakerH,
-      beakerTopY: beakerTopY,
-      beakerBottomY: gauzeY,
-      beakerLeft: cx - beakerW * 0.5,
-      beakerRight: cx + beakerW * 0.5,
-
-      innerLeft: cx - beakerW * 0.5 + 5,
-      innerRight: cx + beakerW * 0.5 - 5,
-      innerTopY: beakerTopY + 8,
-      innerBottomY: gauzeY - 5,
-      innerW: beakerW - 10,
-      innerH: beakerH - 13,
-
-      maxVolL: 0.5
-    };
-  }
-
-  /* ==========================================================================
-   * 5. RENDERER
-   * ========================================================================*/
-
-  function CanvasRenderer(canvas, engine) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext ? canvas.getContext("2d") : null;
-    this.engine = engine || null;
-
-    this.particles   = [];
-    this.bubbles     = [];
-    this.gasPuffs    = [];
-    this.sparks      = [];
-    this.shockwaves  = [];
-
-    this.shakeMag    = 0;
-    this.flashColor  = "#ffffff";
-    this.flashAlpha  = 0;
-
-    this.t           = 0;
-    this.lastTime    = 0;
-    this._raf        = null;
-    this._running    = false;
-
-    this.W = 0;
-    this.H = 0;
-    this.geom = null;
-
-    /* Tracking for engine-driven effect spawning */
-    this._lastReactionCount = 0;
-    this._lastPrecipMoles   = 0;
-    this._lastGasMoles      = 0;
-    this._lastWaterVolume   = 0;
-    this._lastTemp          = 273.15;
-    this._effervesceTimer   = 0;
-    this._steamTimer        = 0;
-    this._settleTimer       = 0;
-
-    /* Smooth colour interpolation */
-    this._currentColor = "#cfe8ff";
-
-    /* Vortex animation phase */
-    this._vortexAngle = 0;
-
-    /* Bound loop for clean add/removeEventListener */
-    this._boundLoop = this._loop.bind(this);
-    this._boundResize = null;
-
-    /* Cached flame palette per frame */
-    this._flameTint = null;
+    this._raf = null;
   }
 
   /* ----------------------------------------------------------------------
-   * 5.1 Lifecycle
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype.resize = function () {
-    var c = this.canvas;
-    if (!c) return;
-    var dpr = window.devicePixelRatio || 1;
-    var rect = c.getBoundingClientRect ? c.getBoundingClientRect() : null;
-    var w = (rect && rect.width) || c.clientWidth || c.width || 800;
-    var h = (rect && rect.height) || c.clientHeight || c.height || 600;
-
-    c.width  = Math.max(1, Math.floor(w * dpr));
-    c.height = Math.max(1, Math.floor(h * dpr));
-
-    if (this.ctx) {
-      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+   * 4.1  ATTACH / RESIZE
+   * --------------------------------------------------------------------*/
+  CanvasRenderer.prototype.attach = function (canvasEl) {
+    if (!canvasEl) {
+      console.error('[CanvasRenderer] attach: null canvas');
+      return false;
     }
-
-    this.W = w;
-    this.H = h;
-    this.geom = computeGeometry(w, h);
-
-    /* Purge particles that were positioned for the old geometry */
-    this.particles.length = 0;
-    this.bubbles.length = 0;
-    this.gasPuffs.length = 0;
-    this.sparks.length = 0;
-    this.shockwaves.length = 0;
+    this.canvas = canvasEl;
+    this.ctx = canvasEl.getContext('2d', { alpha: false });
+    this._resize();
+    global.addEventListener('resize', () => this._resize());
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => this._resize());
+      ro.observe(canvasEl.parentElement || canvasEl);
+    }
+    return true;
   };
 
+  CanvasRenderer.prototype._resize = function () {
+    if (!this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = Math.min(global.devicePixelRatio || 1, 2);
+    this.dpr = dpr;
+    this.width  = Math.max(1, Math.floor(rect.width));
+    this.height = Math.max(1, Math.floor(rect.height));
+    this.canvas.width  = Math.floor(this.width  * dpr);
+    this.canvas.height = Math.floor(this.height * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this._computeGeometry();
+  };
+
+  CanvasRenderer.prototype._computeGeometry = function () {
+    const W = this.width, H = this.height;
+    const minDim = Math.min(W, H);
+
+    const beakerW = Math.floor(minDim * VESSEL.WIDTH_RATIO * (W > H ? 1.05 : 1.0));
+    const beakerH = Math.floor(H * VESSEL.HEIGHT_RATIO);
+    const beakerX = Math.floor(W / 2 - beakerW / 2);
+    const beakerY = Math.floor(H * 0.14);
+
+    const innerX = beakerX + VESSEL.WALL;
+    const innerY = beakerY + VESSEL.WALL;
+    const innerW = beakerW - VESSEL.WALL * 2;
+    const innerH = beakerH - VESSEL.WALL * 2;
+    const floorY = beakerY + beakerH - VESSEL.WALL;
+
+    this.geo = {
+      beakerX, beakerY, beakerW, beakerH,
+      innerX, innerY, innerW, innerH,
+      floorY,
+      tableY: beakerY + beakerH + 4,
+      burnerY: beakerY + beakerH + 44
+    };
+  };
+
+  /* ----------------------------------------------------------------------
+   * 4.2  START / STOP ANIMATION LOOP
+   * --------------------------------------------------------------------*/
   CanvasRenderer.prototype.start = function () {
-    if (this._running) return;
-    if (!this.ctx) {
-      console.warn("[CanvasRenderer] No 2D context — rendering disabled.");
-      return;
-    }
-    this._running = true;
-    this.resize();
-
-    if (!this._boundResize) {
-      this._boundResize = this.resize.bind(this);
-      window.addEventListener("resize", this._boundResize);
-    }
-    if (typeof ResizeObserver !== "undefined" && this.canvas.parentElement) {
-      try {
-        this._ro = new ResizeObserver(this._boundResize);
-        this._ro.observe(this.canvas.parentElement);
-      } catch (e) { /* ignore */ }
-    }
-
-    this.lastTime = performance.now();
-    this._raf = requestAnimationFrame(this._boundLoop);
+    if (this.running) return;
+    this.running = true;
+    this.lastT = performance.now();
+    const loop = (t) => {
+      if (!this.running) return;
+      const dt = Math.min((t - this.lastT) / 1000, 0.05);
+      this.lastT = t;
+      this.time += dt;
+      this._frame(dt);
+      this._raf = requestAnimationFrame(loop);
+    };
+    this._raf = requestAnimationFrame(loop);
   };
 
   CanvasRenderer.prototype.stop = function () {
-    this._running = false;
-    if (this._raf) {
-      cancelAnimationFrame(this._raf);
-      this._raf = null;
-    }
-    if (this._boundResize) {
-      window.removeEventListener("resize", this._boundResize);
-    }
-    if (this._ro) {
-      try { this._ro.disconnect(); } catch (e) { /* ignore */ }
-      this._ro = null;
-    }
+    this.running = false;
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = null;
   };
 
   /* ----------------------------------------------------------------------
-   * 5.2 Public FX triggers
-   * -------------------------------------------------------------------- */
+   * 4.3  FRAME ORCHESTRATION
+   * --------------------------------------------------------------------*/
+  CanvasRenderer.prototype._frame = function (dt) {
+    const ctx = this.ctx;
+    if (!ctx || !this.geo) return;
 
-  CanvasRenderer.prototype.triggerShake = function (magnitude) {
-    this.shakeMag = Math.max(this.shakeMag, magnitude || 8);
-  };
+    const engine = global.ChemistryEngine;
+    const cs = engine ? engine.getCanvasState() : null;
 
-  CanvasRenderer.prototype.triggerFlash = function (color, alpha) {
-    this.flashColor = color || "#ffffff";
-    this.flashAlpha = Math.max(this.flashAlpha, alpha || 0.5);
-  };
-
-  CanvasRenderer.prototype.triggerShockwave = function (x, y, color, maxR) {
-    this.shockwaves.push(new Shockwave({
-      x: x, y: y,
-      color: color || "#ffffff",
-      maxR: maxR || 220,
-      lineWidth: 3.2,
-      decay: 1.05
-    }));
-  };
-
-  /* ----------------------------------------------------------------------
-   * 5.3 Event handling — spawn FX in response to engine reports
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype.handleEvents = function (events) {
-    if (!events || !events.length || !this.geom) return;
-    var geom = this.geom;
-
-    for (var i = 0; i < events.length; i++) {
-      var e = events[i];
-      if (!e || !e.type) continue;
-
-      switch (e.type) {
-
-        case "combustion":
-          this.triggerFlash("#ffb040", 0.55);
-          this.triggerShake(16);
-          this.triggerShockwave(geom.beakerX, geom.gauzeY - 20, "#ff9040", 260);
-          this._spawnSparks(geom.beakerX, geom.gauzeY - 10, 34, "#ffb040");
-          this._spawnSparks(geom.beakerX, geom.gauzeY - 10, 14, "#fff0c0");
-          break;
-
-        case "reaction":
-          if (e.subtype === "alkali-metal-water" && e.ignition) {
-            this.triggerFlash(e.flameColor ? "#ffe0a0" : "#ffcc80", 0.7);
-            this.triggerShake(22);
-            this.triggerShockwave(geom.beakerX, geom.gauzeY - 30, "#ff8040", 300);
-            this._spawnSparks(geom.beakerX, geom.gauzeY - 40, 46, "#ffd060");
-            this._spawnSparks(geom.beakerX, geom.gauzeY - 40, 20, "#ffffff");
-          } else if (e.subtype === "alkaline-earth-water") {
-            this.triggerShake(6);
-            this._spawnSparks(geom.beakerX, geom.gauzeY - 30, 12, "#ffcc80");
-          }
-
-          /* big gas evolution → bubbles + puffs */
-          if (e.gasVolumeL > 0.15) {
-            var count = clamp(Math.floor(e.gasVolumeL * 10), 6, 40);
-            var gasId = null;
-            for (var gk in e.molesProduced) {
-              if (GAS_COLORS[gk]) { gasId = gk; break; }
-            }
-            this._spawnBubbles(count, gasId);
-            this._spawnGasPuffs(Math.min(count, 14), gasId);
-          }
-
-          /* explosive temperature jump → shockwave */
-          if (e.deltaT > 25) {
-            this.triggerShake(clamp(e.deltaT * 0.6, 8, 30));
-            this.triggerShockwave(geom.beakerX, geom.gauzeY - 40,
-              e.flameColor ? "#ffe0a0" : "#80c0ff", 220);
-          }
-
-          /* precipitation → falling particles */
-          if (e.subtype === "precipitation" && e.precipitateMassG > 0.001) {
-            this._spawnPrecipitateParticles(e.precipitateColor || "#e8e8e8", e.precipitateMassG);
-          }
-          break;
-
-        case "precipitation":
-          if (e.precipitateMassG > 0.001) {
-            this._spawnPrecipitateParticles(e.precipitateColor || "#e8e8e8", e.precipitateMassG);
-          }
-          break;
-
-        default:
-          /* generic thermal / gas cues */
-          if (e.deltaT && e.deltaT > 15) {
-            this.triggerShake(clamp(e.deltaT * 0.4, 3, 14));
-          }
-          if (e.gasVolumeL && e.gasVolumeL > 0.2) {
-            this._spawnGasPuffs(8, null);
-          }
-          break;
-      }
+    // 1. Update wave phases
+    for (let i = 0; i < this.wavePhase.length; i++) {
+      this.wavePhase[i] += FLUID.WAVE_SPEED * (1 + i * 0.15) * dt;
     }
+
+    // 2. Sync particles from engine state
+    if (cs) this._syncParticles(cs, dt);
+
+    // 3. Update particles
+    const fluidTop = cs && cs.waterVolume > 0
+      ? this._fluidTopY(cs.waterVolume)
+      : this.geo.floorY;
+    for (const b of this.bubbles)   b.update(dt, fluidTop);
+    for (const s of this.smokes)    s.update(dt);
+    for (const s of this.sediments) s.update(dt, this.geo.floorY - 2);
+    for (const c of this.chips)     c.update(dt, this.geo.floorY,
+                                            fluidTop, this.geo.floorY,
+                                            cs && cs.waterVolume <= 0);
+
+    // 4. Cull dead particles
+    this.bubbles   = this.bubbles.filter(p => !p.dead);
+    this.smokes    = this.smokes.filter(p => !p.dead);
+    this.sediments = this.sediments.filter(p => !p.dead);
+    this.chips     = this.chips.filter(p => !p.dead);
+
+    // 5. Draw
+    this._drawBackground(ctx);
+    this._drawTable(ctx);
+    if (cs && cs.heatIntensity > 0) this._drawBurner(ctx, cs);
+    this._drawBeakerBack(ctx);
+    if (cs) {
+      this._drawFluid(ctx, cs);
+      this._drawSolidChips(ctx);
+      this._drawSediments(ctx);
+      this._drawBubbles(ctx);
+    }
+    this._drawBeakerFront(ctx, cs);
+    if (cs) this._drawSmokes(ctx, cs);
+    this._drawTemperatureGlow(ctx, cs);
   };
 
   /* ----------------------------------------------------------------------
-   * 5.4 FX spawn helpers
-   * -------------------------------------------------------------------- */
+   * 4.4  PARTICLE SPAWNING FROM ENGINE STATE
+   * --------------------------------------------------------------------*/
+  CanvasRenderer.prototype._syncParticles = function (cs, dt) {
+    const geo = this.geo;
 
-  CanvasRenderer.prototype._spawnSparks = function (x, y, count, color) {
-    for (var i = 0; i < count; i++) {
-      var angle = rand(-Math.PI, 0);
-      var speed = rand(60, 240);
-      this.sparks.push(new Spark({
-        x: x + rand(-8, 8),
-        y: y + rand(-4, 4),
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - rand(40, 120),
-        color: color || "#ffd24a",
-        size: rand(1.6, 3.0),
-        decay: rand(1.1, 1.9)
-      }));
+    /* ---- Boiling bubbles ------------------------------------------- */
+    if (cs.boiling && cs.waterVolume > 0) {
+      const rate = 30 + cs.boilingRate * 40;
+      this._bubbleAccum += rate * dt;
+      const n = Math.floor(this._bubbleAccum);
+      this._bubbleAccum -= n;
+      const top = this._fluidTopY(cs.waterVolume);
+      for (let i = 0; i < n; i++) {
+        const x = rand(geo.innerX + 8, geo.innerX + geo.innerW - 8);
+        const y = geo.floorY - rand(2, 12);
+        this.bubbles.push(new Bubble(x, y, rand(2, 5), '#cbd5e1'));
+      }
     }
-  };
 
-  CanvasRenderer.prototype._spawnBubbles = function (count, gasId) {
-    var geom = this.geom;
-    if (!geom) return;
-    var surfaceY = this._liquidSurfaceY();
-
-    for (var i = 0; i < count; i++) {
-      var bx = rand(geom.innerLeft + 8, geom.innerRight - 8);
-      var by = geom.innerBottomY - rand(2, 12);
-      var b = new Bubble({
-        x: bx,
-        y: by,
-        r: rand(1.5, 4),
-        vy: rand(-70, -32) * (1 + Math.random() * 0.6)
-      });
-      b.surfaceY = surfaceY;
-      b.gasId = gasId || null;
-      this.bubbles.push(b);
+    /* ---- Gas evolution bubbles (H2, CO2, Cl2, O2) ----------------- */
+    for (const gasId in cs.gases) {
+      const g = cs.gases[gasId];
+      if (g.moles < 1e-6) continue;
+      const rate = Math.min(60, 8 + Math.log10(g.moles * 1e4 + 1) * 25);
+      const n = Math.floor(rate * dt + Math.random() * rate * dt);
+      const top = this._fluidTopY(cs.waterVolume);
+      for (let i = 0; i < n; i++) {
+        const x = rand(geo.innerX + 10, geo.innerX + geo.innerW - 10);
+        const y = geo.floorY - rand(2, 14);
+        this.bubbles.push(new Bubble(x, y, rand(1.5, 4), g.bubbleColor));
+      }
+      // Dense fume cloud for toxic gases
+      if (g.fumeColor && g.moles > 2e-4) {
+        const accum = this._smokeAccum[gasId] || 0;
+        const smokeRate = Math.min(30, 6 + Math.log10(g.moles * 1e5 + 1) * 10);
+        const newAccum = accum + smokeRate * dt;
+        const count = Math.floor(newAccum);
+        this._smokeAccum[gasId] = newAccum - count;
+        for (let i = 0; i < count; i++) {
+          const sx = rand(geo.innerX + 12, geo.innerX + geo.innerW - 12);
+          const sy = this._fluidTopY(cs.waterVolume) - rand(2, 10);
+          this.smokes.push(new Smoke(sx, sy, g.fumeColor, {
+            r: rand(10, 22), rGrow: rand(14, 26),
+            life: rand(2.5, 5.0),
+            alpha: 0.28
+          }));
+        }
+      }
     }
-  };
 
-  CanvasRenderer.prototype._spawnGasPuffs = function (count, gasId) {
-    var geom = this.geom;
-    if (!geom) return;
-    var info = gasId && GAS_COLORS[gasId] ? GAS_COLORS[gasId] : { color: "#e8e8e8", density: 0.4 };
-    var surfaceY = this._liquidSurfaceY() - 4;
-
-    for (var i = 0; i < count; i++) {
-      this.gasPuffs.push(new GasPuff({
-        x: rand(geom.beakerLeft + 12, geom.beakerRight - 12),
-        y: surfaceY - rand(0, 20),
-        vx: rand(-14, 14),
-        vy: rand(-40, -22),
-        r: rand(4, 9),
-        maxR: rand(28, 52),
-        color: info.color,
-        density: info.density,
-        decay: rand(0.35, 0.65)
-      }));
+    /* ---- Steam wisps (T ≥ 60 °C) ---------------------------------- */
+    if (cs.temperature >= 60 && cs.waterVolume > 0) {
+      const rate = (cs.temperature - 55) * 0.25;
+      this._steamAccum += rate * dt;
+      const n = Math.floor(this._steamAccum);
+      this._steamAccum -= n;
+      for (let i = 0; i < n; i++) {
+        const sx = rand(geo.innerX + 12, geo.innerX + geo.innerW - 12);
+        const sy = this._fluidTopY(cs.waterVolume) - rand(0, 6);
+        this.smokes.push(new Smoke(sx, sy, '#e2e8f0', {
+          r: rand(6, 12), rGrow: rand(10, 18),
+          life: rand(1.8, 3.2),
+          vy: rand(-30, -18),
+          alpha: 0.18
+        }));
+      }
     }
-  };
 
-  CanvasRenderer.prototype._spawnPrecipitateParticles = function (color, massG) {
-    var geom = this.geom;
-    if (!geom) return;
-    var surfaceY = this._liquidSurfaceY();
-    var count = clamp(Math.floor(massG * 14), 4, 26);
-
-    for (var i = 0; i < count; i++) {
-      var p = new Particle({
-        x: rand(geom.innerLeft + 8, geom.innerRight - 8),
-        y: rand(surfaceY + 6, geom.innerBottomY - 20),
-        vx: rand(-10, 10),
-        vy: rand(-4, 14),
-        r: rand(1.2, 2.8),
-        color: color,
-        decay: 0.35
-      });
-      p.settleY = geom.innerBottomY - 2;
-      this.particles.push(p);
+    /* ---- Precipitate sediment spawn -------------------------------- */
+    const precip = cs.solids.filter(s => s.kind === 'precipitate');
+    for (const p of precip) {
+      const want = Math.min(80, Math.floor(p.moles * 8e4));
+      const have = this.sediments.filter(s => s._pid === p.id).length;
+      const toSpawn = want - have;
+      for (let i = 0; i < Math.min(toSpawn, 3); i++) {
+        const sx = rand(geo.innerX + 10, geo.innerX + geo.innerW - 10);
+        const sy = this._fluidTopY(cs.waterVolume) + rand(10, 40);
+        const s = new Sediment(sx, sy, rand(1.4, 3.0), p.color);
+        s._pid = p.id;
+        this.sediments.push(s);
+      }
     }
+
+    /* ---- Solid metal chips / crystals ----------------------------- */
+    const chipTargets = cs.solids.filter(s => s.kind === 'metal' || s.kind === 'solid');
+    for (const target of chipTargets) {
+      const want = Math.min(10, Math.max(1, Math.floor(target.moles * 5e3)));
+      const have = this.chips.filter(c => c._cid === target.id).length;
+      const toSpawn = want - have;
+      for (let i = 0; i < Math.min(toSpawn, 2); i++) {
+        const cx = rand(geo.innerX + 20, geo.innerX + geo.innerW - 20);
+        const cy = cs.waterVolume > 0
+          ? this._fluidTopY(cs.waterVolume) + rand(0, 20)
+          : geo.floorY - 12;
+        const chip = new SolidChip(cx, cy, rand(3.5, 6.5), target.color, target.kind === 'metal');
+        chip._cid = target.id;
+        chip.settled = cs.waterVolume <= 0;
+        chip.y = cs.waterVolume <= 0 ? geo.floorY - chip.size * 0.5 : chip.y;
+        this.chips.push(chip);
+      }
+    }
+
+    /* ---- Prune chips/sediments for removed solids ------------------ */
+    const liveIds = new Set(cs.solids.map(s => s.id));
+    this.chips     = this.chips.filter(c => liveIds.has(c._cid));
+    this.sediments = this.sediments.filter(s => liveIds.has(s._pid));
   };
 
   /* ----------------------------------------------------------------------
-   * 5.5 Main loop
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._loop = function (ts) {
-    if (!this._running) return;
-
-    var dt = (ts - this.lastTime) / 1000;
-    if (!isFinite(dt) || dt < 0) dt = 0.016;
-    if (dt > 0.1) dt = 0.1;
-    this.lastTime = ts;
-
-    this.t += dt;
-    this._vortexAngle += dt * 6;
-
-    if (!this.geom) this.resize();
-    if (!this.geom) {
-      this._raf = requestAnimationFrame(this._boundLoop);
-      return;
-    }
-
-    this._scanEngine(dt);
-    this._update(dt);
-    this._draw();
-
-    this._raf = requestAnimationFrame(this._boundLoop);
-  };
-
-  /* ----------------------------------------------------------------------
-   * 5.6 Engine-driven automatic FX
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._scanEngine = function (dt) {
-    if (!this.engine || !this.engine.vessel) return;
-    var v = this.engine.vessel;
-
-    /* ---- new reactions ---- */
-    if (v.reactionCount !== this._lastReactionCount) {
-      this._lastReactionCount = v.reactionCount;
-      if (v.lastEvents && v.lastEvents.length) {
-        this.handleEvents(v.lastEvents);
-      }
-    }
-
-    /* ---- new precipitates → falling particles ---- */
-    var totalPrecip = 0;
-    for (var i = 0; i < v.precipitates.length; i++) totalPrecip += v.precipitates[i].moles;
-    if (totalPrecip > this._lastPrecipMoles + 1e-6 && this._lastPrecipMoles > 0) {
-      /* handled by events; nothing extra */
-    }
-    this._lastPrecipMoles = totalPrecip;
-
-    /* ---- active gas evolution → continuous bubbles ---- */
-    var totalGas = 0;
-    for (var g in v.gases) {
-      if (Object.prototype.hasOwnProperty.call(v.gases, g)) totalGas += v.gases[g];
-    }
-    if (totalGas > this._lastGasMoles + 1e-4 && v.waterVolume > 0) {
-      this._effervesceTimer += 0.35;
-    }
-    this._lastGasMoles = totalGas;
-
-    if (this._effervesceTimer > 0.08) {
-      var burst = Math.min(3, Math.floor(this._effervesceTimer * 6));
-      for (var b = 0; b < burst; b++) this._spawnBubbles(1, null);
-      this._effervesceTimer *= 0.6;
-      if (this._effervesceTimer < 0.08) this._effervesceTimer = 0;
-    }
-
-    /* ---- steam over a hot solution ---- */
-    if (v.temperature > 353.15 && v.waterVolume > 0) {
-      this._steamTimer += dt;
-      if (this._steamTimer > 0.09) {
-        this._steamTimer = 0;
-        this._spawnGasPuffs(1, "H2O");
-      }
-    }
-
-    /* ---- ambient gas puffs whenever a visible gas sits in the headspace ---- */
-    var visibleGases = ["NO2", "N2O4", "Cl2", "Br2", "I2", "SO2", "H2S", "NH3"];
-    for (var vi = 0; vi < visibleGases.length; vi++) {
-      var gid = visibleGases[vi];
-      if ((v.gases[gid] || 0) > 1e-5 && Math.random() < 0.08) {
-        this._spawnGasPuffs(1, gid);
-      }
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 5.7 Update particle systems
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._update = function (dt) {
-    var geom = this.geom;
-    var i;
-
-    /* --- particles (precipitates) --- */
-    var surfaceY = this._liquidSurfaceY();
-    for (i = this.particles.length - 1; i >= 0; i--) {
-      var p = this.particles[i];
-      p.update(dt, geom);
-      /* settle against the current liquid surface as a floor */
-      if (p.y > geom.innerBottomY - 2) {
-        p.y = geom.innerBottomY - 2;
-        p.settled = true;
-      }
-    }
-
-    /* --- bubbles --- */
-    for (i = this.bubbles.length - 1; i >= 0; i--) {
-      var b = this.bubbles[i];
-      b.surfaceY = surfaceY;
-      b.update(dt, geom);
-      if (b.life <= 0 || b.y < surfaceY - 6) {
-        this.bubbles.splice(i, 1);
-      }
-    }
-
-    /* --- gas puffs --- */
-    for (i = this.gasPuffs.length - 1; i >= 0; i--) {
-      var gp = this.gasPuffs[i];
-      gp.update(dt);
-      if (gp.life <= 0) this.gasPuffs.splice(i, 1);
-    }
-
-    /* --- sparks --- */
-    for (i = this.sparks.length - 1; i >= 0; i--) {
-      var sp = this.sparks[i];
-      sp.update(dt);
-      if (sp.life <= 0) this.sparks.splice(i, 1);
-    }
-
-    /* --- shockwaves --- */
-    for (i = this.shockwaves.length - 1; i >= 0; i--) {
-      var sw = this.shockwaves[i];
-      sw.update(dt);
-      if (sw.life <= 0) this.shockwaves.splice(i, 1);
-    }
-
-    /* --- shake decay --- */
-    this.shakeMag *= Math.pow(0.06, dt);
-    if (this.shakeMag < 0.15) this.shakeMag = 0;
-
-    /* --- flash decay --- */
-    this.flashAlpha *= Math.pow(0.02, dt);
-    if (this.flashAlpha < 0.01) this.flashAlpha = 0;
-
-    /* --- smooth liquid colour transition --- */
-    if (this.engine && this.engine.vessel) {
-      var target = this.engine.vessel.colour || "#cfe8ff";
-      this._currentColor = mixHex(this._currentColor, target, clamp(dt * 4, 0, 1));
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 5.8 Convenience state reads
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._liquidSurfaceY = function () {
-    var geom = this.geom;
-    if (!geom) return 0;
-    var v = this.engine && this.engine.vessel;
-    var vol = v ? v.waterVolume : 0;
-    var frac = clamp(vol / geom.maxVolL, 0, 1);
-    if (frac <= 0) return geom.innerBottomY;
-    return geom.innerBottomY - frac * geom.innerH;
-  };
-
-  CanvasRenderer.prototype._detectFlameTint = function () {
-    var v = this.engine && this.engine.vessel;
-    if (!v) return null;
-    var decompose = window.ChemistryEngine && window.ChemistryEngine.utils
-      ? window.ChemistryEngine.utils.decomposeSpecies
-      : null;
-    if (!decompose) return null;
-
-    var best = null, bestMoles = 0;
-
-    for (var id in v.soluteMoles) {
-      if (!Object.prototype.hasOwnProperty.call(v.soluteMoles, id)) continue;
-      var n = v.soluteMoles[id];
-      if (!(n > 1e-6)) continue;
-      var d = decompose(id);
-      if (!d) continue;
-      if (ION_FLAME_COLORS[d.cation] && n > bestMoles) {
-        bestMoles = n;
-        best = d.cation;
-      }
-    }
-    for (var i = 0; i < v.solids.length; i++) {
-      var s = v.solids[i];
-      if (!(s.moles > 1e-6)) continue;
-      var d2 = decompose(s.id);
-      if (!d2) continue;
-      if (ION_FLAME_COLORS[d2.cation] && s.moles > bestMoles) {
-        bestMoles = s.moles;
-        best = d2.cation;
-      }
-    }
-    return best ? ION_FLAME_COLORS[best] : null;
+   * 4.5  FLUID TOP POSITION
+   * --------------------------------------------------------------------*/
+  CanvasRenderer.prototype._fluidTopY = function (volume) {
+    const geo = this.geo;
+    const frac = clamp(volume / VESSEL.MAX_VOLUME, 0, 1);
+    return geo.floorY - frac * geo.innerH;
   };
 
   /* ==========================================================================
-   * 6. DRAWING
+   * 5. DRAW ROUTINES
    * ========================================================================*/
 
-  CanvasRenderer.prototype._draw = function () {
-    var ctx = this.ctx;
-    var geom = this.geom;
-    if (!ctx || !geom) return;
+  /* ---- 5.1 BACKGROUND ---------------------------------------------- */
+  CanvasRenderer.prototype._drawBackground = function (ctx) {
+    const { width: W, height: H } = this;
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, COLORS.bgTop);
+    g.addColorStop(1, COLORS.bgBottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
 
-    /* reset transform and clear */
+    // soft radial vignette
+    const r = Math.max(W, H) * 0.75;
+    const rg = ctx.createRadialGradient(W / 2, H * 0.35, r * 0.15, W / 2, H * 0.35, r);
+    rg.addColorStop(0, 'rgba(56,189,248,0.08)');
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, W, H);
+  };
+
+  /* ---- 5.2 TABLE --------------------------------------------------- */
+  CanvasRenderer.prototype._drawTable = function (ctx) {
+    const geo = this.geo;
+    const W = this.width;
+    const y = geo.tableY;
+    const h = this.height - y;
+
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, COLORS.tableTop);
+    g.addColorStop(1, COLORS.tableEdge);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y, W, h);
+
+    // surface highlight line
+    ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(W, y + 0.5);
+    ctx.stroke();
+  };
+
+  /* ---- 5.3 BUNSEN BURNER FLAME ------------------------------------- */
+  CanvasRenderer.prototype._drawBurner = function (ctx, cs) {
+    const geo = this.geo;
+    const intensity = clamp(cs.heatIntensity, 0, 1);
+    if (intensity <= 0.001) return;
+
+    const cx = geo.beakerX + geo.beakerW / 2;
+    const baseY = geo.burnerY;
+    const beakerBottom = geo.beakerY + geo.beakerH;
+
+    /* ---- Burner barrel ------------------------------------------- */
     ctx.save();
-    ctx.setTransform(
-      (window.devicePixelRatio || 1), 0, 0,
-      (window.devicePixelRatio || 1), 0, 0
+    const barrelW = 20;
+    const barrelTopY = baseY - 4;
+    const barrelBotY = baseY + 58;
+    const bg = ctx.createLinearGradient(cx - barrelW / 2, 0, cx + barrelW / 2, 0);
+    bg.addColorStop(0, '#1e293b');
+    bg.addColorStop(0.5, '#475569');
+    bg.addColorStop(1, '#0f172a');
+    ctx.fillStyle = bg;
+    ctx.fillRect(cx - barrelW / 2, barrelTopY, barrelW, barrelBotY - barrelTopY);
+    // base plate
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.ellipse(cx, barrelBotY, 34, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    /* ---- Flame cone ---------------------------------------------- */
+    this._flameT += 0.016;
+    const flicker = Math.sin(this._flameT * 8) * 0.08 +
+                    Math.sin(this._flameT * 17 + 1.3) * 0.05 +
+                    Math.random() * 0.04;
+    const flameH = (beakerBottom - barrelTopY) * (0.5 + intensity * 0.55) * (1 + flicker);
+    const flameW = (18 + intensity * 26) * (1 + flicker * 0.5);
+    const flameTipY = beakerBottom - flameH;
+
+    // Metal flame test tint (if any)
+    const tintColor = cs.flameColor || null;
+    const baseOuter = tintColor || COLORS.flameOut;
+    const baseMid   = tintColor ? this._tintShift(tintColor, -10) : COLORS.flameMid;
+    const baseCore  = tintColor ? this._tintShift(tintColor, 40)  : COLORS.flameCore;
+
+    // Outer glow
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    const outerGrad = ctx.createRadialGradient(
+      cx, beakerBottom - flameH * 0.35, 4,
+      cx, beakerBottom - flameH * 0.35, flameH * 0.85
     );
-    ctx.clearRect(0, 0, geom.W, geom.H);
+    outerGrad.addColorStop(0,   rgba(baseOuter, 0.35 * intensity));
+    outerGrad.addColorStop(0.5, rgba(baseOuter, 0.15 * intensity));
+    outerGrad.addColorStop(1,   rgba(baseOuter, 0));
+    ctx.fillStyle = outerGrad;
+    ctx.beginPath();
+    ctx.ellipse(cx, beakerBottom - flameH * 0.35, flameW * 2.2, flameH * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    /* ---- background ---- */
-    this._drawBackground(ctx, geom);
+    // Outer cone
+    this._drawFlameCone(ctx, cx, beakerBottom + 2, flameW * 1.05, flameH,
+                        baseOuter, 0.55 * intensity);
 
-    /* ---- determine shake offset ---- */
-    var shakeX = 0, shakeY = 0;
-    if (this.shakeMag > 0.2) {
-      shakeX = (Math.random() - 0.5) * this.shakeMag;
-      shakeY = (Math.random() - 0.5) * this.shakeMag;
-    }
+    // Mid cone
+    this._drawFlameCone(ctx, cx, beakerBottom, flameW * 0.75, flameH * 0.82,
+                        baseMid, 0.7 * intensity);
 
-    ctx.save();
-    ctx.translate(shakeX, shakeY);
+    // Inner hot core
+    this._drawFlameCone(ctx, cx, beakerBottom - 2, flameW * 0.4, flameH * 0.55,
+                        baseCore, 0.95 * intensity);
 
-    /* ---- scene layers (back → front) ---- */
-    this._drawBench(ctx, geom);
-    this._drawBurner(ctx, geom);
-    this._drawFlame(ctx, geom);
-    this._drawTripod(ctx, geom);
-    this._drawGauze(ctx, geom);
-
-    this._drawBeakerBack(ctx, geom);
-    this._drawLiquid(ctx, geom);
-    this._drawPrecipitateBed(ctx, geom);
-    this._drawBubbles(ctx, geom);
-    this._drawFallingParticles(ctx, geom);
-    this._drawMeniscus(ctx, geom);
-    this._drawVortex(ctx, geom);
-    this._drawBeakerGlass(ctx, geom);
-    this._drawGraduations(ctx, geom);
-    this._drawBeakerRim(ctx, geom);
-
-    this._drawGasPuffs(ctx, geom);
-    this._drawSparks(ctx, geom);
-    this._drawShockwaves(ctx, geom);
-
-    ctx.restore();
-
-    /* ---- full-screen overlay effects (no shake) ---- */
-    this._drawFlash(ctx, geom);
-
-    /* ---- HUD ---- */
-    this._drawHUD(ctx, geom);
+    // Inner white-hot nucleus
+    this._drawFlameCone(ctx, cx, beakerBottom - 6, flameW * 0.2, flameH * 0.32,
+                        '#ffffff', 0.75 * intensity);
 
     ctx.restore();
   };
 
-  /* ----------------------------------------------------------------------
-   * 6.1 Background
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawBackground = function (ctx, geom) {
-    var W = geom.W, H = geom.H;
-
-    /* base gradient */
-    var grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, "#0a1420");
-    grad.addColorStop(0.5, "#0d1a2b");
-    grad.addColorStop(1, "#050b13");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    /* subtle vignette glow behind the beaker */
-    var cx = geom.beakerX;
-    var cy = geom.beakerTopY + geom.beakerH * 0.4;
-    var rad = Math.max(geom.beakerW * 2.2, 220);
-    var glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-    glow.addColorStop(0, "rgba(80, 140, 200, 0.14)");
-    glow.addColorStop(0.5, "rgba(40, 80, 140, 0.06)");
-    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, W, H);
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.2 Bench
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawBench = function (ctx, geom) {
-    var W = geom.W;
-    var benchY = geom.benchY;
-    var benchH = geom.benchH;
-
-    /* bench surface — warm dark wood/metal */
-    var grad = ctx.createLinearGradient(0, benchY, 0, benchY + benchH);
-    grad.addColorStop(0, "#1a1f28");
-    grad.addColorStop(0.4, "#14181f");
-    grad.addColorStop(1, "#0a0d12");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, benchY, W, benchH);
-
-    /* top highlight line */
-    ctx.strokeStyle = "rgba(140, 180, 220, 0.18)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, benchY + 0.5);
-    ctx.lineTo(W, benchY + 0.5);
-    ctx.stroke();
-
-    /* subtle reflections */
-    ctx.strokeStyle = "rgba(80, 120, 160, 0.08)";
-    for (var i = 0; i < 3; i++) {
-      var y = benchY + 6 + i * 4;
-      ctx.beginPath();
-      ctx.moveTo(W * 0.08, y);
-      ctx.lineTo(W * 0.92, y);
-      ctx.stroke();
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.3 Bunsen burner
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawBurner = function (ctx, geom) {
-    var cx = geom.cx;
-    var baseY = geom.burnerBaseY;
-    var topY = geom.burnerTopY;
-    var w = geom.burnerW;
-
-    /* base plate */
-    ctx.fillStyle = "#141a22";
-    ctx.beginPath();
-    ctx.moveTo(cx - 28, baseY);
-    ctx.lineTo(cx + 28, baseY);
-    ctx.lineTo(cx + 22, baseY - 6);
-    ctx.lineTo(cx - 22, baseY - 6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(120, 150, 180, 0.35)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    /* barrel */
-    var barrelGrad = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
-    barrelGrad.addColorStop(0, "#1c232c");
-    barrelGrad.addColorStop(0.35, "#39424d");
-    barrelGrad.addColorStop(0.5, "#4a5663");
-    barrelGrad.addColorStop(0.65, "#39424d");
-    barrelGrad.addColorStop(1, "#1c232c");
-
-    ctx.fillStyle = barrelGrad;
-    ctx.beginPath();
-    ctx.moveTo(cx - w / 2, baseY - 6);
-    ctx.lineTo(cx - w / 2 + 2, topY);
-    ctx.lineTo(cx + w / 2 - 2, topY);
-    ctx.lineTo(cx + w / 2, baseY - 6);
-    ctx.closePath();
-    ctx.fill();
-
-    /* air intake holes near the bottom */
-    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
-    for (var i = 0; i < 3; i++) {
-      var hx = cx - 5 + i * 5;
-      var hy = baseY - 30;
-      ctx.beginPath();
-      ctx.arc(hx, hy, 1.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    /* collar at the top */
-    ctx.fillStyle = "#2a3340";
-    ctx.fillRect(cx - w / 2 - 3, topY - 3, w + 6, 7);
-    ctx.strokeStyle = "rgba(160, 190, 220, 0.4)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(cx - w / 2 - 3.5, topY - 3.5, w + 7, 8);
-
-    /* nozzle opening glow */
-    if (this.engine && this.engine.vessel && this.engine.vessel.flamePower > 0.02) {
-      var pg = ctx.createRadialGradient(cx, topY - 2, 0, cx, topY - 2, 14);
-      pg.addColorStop(0, "rgba(255, 200, 120, 0.55)");
-      pg.addColorStop(1, "rgba(255, 200, 120, 0)");
-      ctx.fillStyle = pg;
-      ctx.fillRect(cx - 14, topY - 16, 28, 16);
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.4 Flame
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawFlame = function (ctx, geom) {
-    var v = this.engine && this.engine.vessel;
-    if (!v) return;
-    var power = v.flamePower;
-    if (power < 0.02) return;
-
-    var cx = geom.cx;
-    var baseY = geom.burnerTopY - 4;
-    var maxH = geom.burnerTopY - geom.gauzeY - 8;
-    if (maxH < 20) maxH = 20;
-
-    var ionTint = this._detectFlameTint();
-    var palette = ionTint
-      ? {
-          inner: ionTint.inner,
-          mid: ionTint.mid,
-          outer: ionTint.outer,
-          glow: ionTint.glow,
-          tip: ionTint.outer
-        }
-      : DEFAULT_FLAME;
-
-    /* flicker */
-    var flick = 0.93 + Math.sin(this.t * 18) * 0.05 + Math.sin(this.t * 33 + 1.7) * 0.04;
-    var flameH = maxH * power * flick;
-    var tipY = baseY - flameH;
-
-    /* glow halo behind the flame */
-    var glowGrad = ctx.createRadialGradient(cx, baseY - flameH * 0.5, 4, cx, baseY - flameH * 0.5, flameH * 1.4);
-    glowGrad.addColorStop(0, rgba(palette.glow, 0.45 * power));
-    glowGrad.addColorStop(0.5, rgba(palette.outer, 0.20 * power));
-    glowGrad.addColorStop(1, rgba(palette.outer, 0));
-    ctx.fillStyle = glowGrad;
-    ctx.beginPath();
-    ctx.arc(cx, baseY - flameH * 0.5, flameH * 1.4, 0, Math.PI * 2);
-    ctx.fill();
-
-    /* --- outer flame --- */
-    this._drawFlameTongue(ctx, cx, baseY, tipY, geom.burnerW * 1.6, palette.outer, 0.75, this.t * 3.1);
-    /* --- mid flame --- */
-    this._drawFlameTongue(ctx, cx, baseY - 2, tipY + flameH * 0.14, geom.burnerW * 1.05, palette.mid, 0.9, this.t * 4.2);
-    /* --- inner cone --- */
-    this._drawFlameTongue(ctx, cx, baseY - 4, tipY + flameH * 0.30, geom.burnerW * 0.65, palette.inner, 1.0, this.t * 5.4);
-
-    /* tip warm highlight */
-    var tipGrad = ctx.createRadialGradient(cx, tipY + 6, 0, cx, tipY + 6, 22);
-    tipGrad.addColorStop(0, rgba(palette.tip, 0.55 * power));
-    tipGrad.addColorStop(1, rgba(palette.tip, 0));
-    ctx.fillStyle = tipGrad;
-    ctx.beginPath();
-    ctx.arc(cx, tipY + 6, 22, 0, Math.PI * 2);
-    ctx.fill();
-  };
-
-  CanvasRenderer.prototype._drawFlameTongue = function (ctx, cx, baseY, tipY, width, color, alpha, phase) {
-    var h = baseY - tipY;
-    if (h <= 0) return;
-
-    var w = width * (0.94 + Math.sin(phase) * 0.06);
-    var wob = Math.sin(phase * 1.3) * 1.6;
-
+  CanvasRenderer.prototype._drawFlameCone = function (ctx, cx, baseY, w, h, color, alpha) {
+    const c = hexToRgb(color);
     ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = color;
+    const g = ctx.createLinearGradient(cx, baseY, cx, baseY - h);
+    g.addColorStop(0,   `rgba(${c.r},${c.g},${c.b},${alpha * 0.9})`);
+    g.addColorStop(0.6, `rgba(${c.r},${c.g},${c.b},${alpha * 0.5})`);
+    g.addColorStop(1,   `rgba(${c.r},${c.g},${c.b},0)`);
+    ctx.fillStyle = g;
     ctx.beginPath();
-
-    /* left side */
     ctx.moveTo(cx - w / 2, baseY);
+    // smooth S-curve flame profile
     ctx.bezierCurveTo(
-      cx - w / 2 - 1, baseY - h * 0.32,
-      cx - w * 0.34 + wob, baseY - h * 0.65,
-      cx + wob * 0.6, tipY
+      cx - w * 0.6, baseY - h * 0.35,
+      cx - w * 0.15, baseY - h * 0.75,
+      cx, baseY - h
     );
-    /* right side */
     ctx.bezierCurveTo(
-      cx + w * 0.34 + wob, baseY - h * 0.65,
-      cx + w / 2 + 1, baseY - h * 0.32,
+      cx + w * 0.15, baseY - h * 0.75,
+      cx + w * 0.6, baseY - h * 0.35,
       cx + w / 2, baseY
     );
     ctx.closePath();
-
-    /* soft gradient fill so the tongue has depth */
-    var grad = ctx.createLinearGradient(0, baseY, 0, tipY);
-    grad.addColorStop(0, rgba(color, 0.95));
-    grad.addColorStop(0.55, rgba(color, 0.75));
-    grad.addColorStop(1, rgba(color, 0.05));
-    ctx.fillStyle = grad;
     ctx.fill();
+    ctx.restore();
+  };
+
+  CanvasRenderer.prototype._tintShift = function (hex, delta) {
+    const c = hexToRgb(hex);
+    const f = v => clamp(v + delta, 0, 255).toString(16).padStart(2, '0');
+    return '#' + f(c.r) + f(c.g) + f(c.b);
+  };
+
+  /* ---- 5.4 BEAKER (BACK WALL) -------------------------------------- */
+  CanvasRenderer.prototype._drawBeakerBack = function (ctx) {
+    const g = this.geo;
+    ctx.save();
+    // interior faint tint (glass back wall seen through fluid later)
+    ctx.fillStyle = 'rgba(15,23,42,0.35)';
+    ctx.beginPath();
+    this._beakerPath(ctx, g.beakerX + 2, g.beakerY + 2, g.beakerW - 4, g.beakerH - 4);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  CanvasRenderer.prototype._beakerPath = function (ctx, x, y, w, h) {
+    const r = VESSEL.BOTTOM_R;
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + h - r);
+    ctx.quadraticCurveTo(x, y + h, x + r, y + h);
+    ctx.lineTo(x + w - r, y + h);
+    ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - r);
+    ctx.lineTo(x + w, y);
+  };
+
+  /* ---- 5.5 FLUID COLUMN WITH WAVES + MENISCUS ---------------------- */
+  CanvasRenderer.prototype._drawFluid = function (ctx, cs) {
+    if (cs.waterVolume <= 0) return;
+    const g = this.geo;
+    const topY = this._fluidTopY(cs.waterVolume);
+    const botY = g.floorY;
+    const leftX = g.innerX;
+    const rightX = g.innerX + g.innerW;
+
+    // Final color (indicator overrides base chromophore blend)
+    const baseColor = cs.indicatorColor
+      ? this._blendColors(cs.fluidColor, cs.indicatorColor, 0.55)
+      : cs.fluidColor;
+
+    ctx.save();
+
+    // Clip to inner beaker shape so fluid stays inside glass
+    ctx.beginPath();
+    this._beakerPath(ctx, g.innerX, g.innerY, g.innerW, g.innerH);
+    ctx.lineTo(g.innerX + g.innerW, g.innerY);
+    ctx.closePath();
+    ctx.clip();
+
+    // --- Wave surface path ---
+    const wavePts = [];
+    const steps = 40;
+    const amp = FLUID.WAVE_AMP * (1 + cs.stirring * 3 + (cs.boiling ? 2 : 0));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = lerp(leftX, rightX, t);
+      let yOff = 0;
+      for (let k = 0; k < FLUID.SURFACE_WAVES; k++) {
+        yOff += Math.sin(this.wavePhase[k] + t * Math.PI * (2 + k) + k) *
+                (amp / (k + 1.4));
+      }
+      // meniscus curvature (edges higher)
+      const edgeT = Math.min(t, 1 - t) * 2;   // 0 at edges, 1 at center
+      const meniscus = (1 - edgeT) * FLUID.MENISCUS_DEPTH;
+      // boiling jitter
+      if (cs.boiling) yOff += (Math.random() - 0.5) * 3;
+      wavePts.push({ x, y: topY + yOff + meniscus });
+    }
+
+    // --- Fluid body path ---
+    ctx.beginPath();
+    ctx.moveTo(wavePts[0].x, wavePts[0].y);
+    for (let i = 1; i < wavePts.length; i++) {
+      // smooth via quadratic midpoints
+      const p = wavePts[i - 1], q = wavePts[i];
+      const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+      ctx.quadraticCurveTo(p.x, p.y, mx, my);
+    }
+    ctx.lineTo(rightX, botY);
+    ctx.lineTo(leftX, botY);
+    ctx.closePath();
+
+    // --- Fluid gradient fill ---
+    const c = hexToRgb(baseColor);
+    const fg = ctx.createLinearGradient(0, topY, 0, botY);
+    fg.addColorStop(0, `rgba(${c.r},${c.g},${c.b},${FLUID.OPACITY * 0.85})`);
+    fg.addColorStop(0.5, `rgba(${Math.max(0,c.r-15)},${Math.max(0,c.g-15)},${Math.max(0,c.b-15)},${FLUID.OPACITY})`);
+    fg.addColorStop(1, `rgba(${Math.max(0,c.r-30)},${Math.max(0,c.g-30)},${Math.max(0,c.b-30)},${FLUID.OPACITY})`);
+    ctx.fillStyle = fg;
+    ctx.fill();
+
+    // --- Surface highlight line ---
+    ctx.beginPath();
+    ctx.moveTo(wavePts[0].x, wavePts[0].y);
+    for (let i = 1; i < wavePts.length; i++) {
+      const p = wavePts[i - 1], q = wavePts[i];
+      const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+      ctx.quadraticCurveTo(p.x, p.y, mx, my);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // --- Meniscus highlights at edges ---
+    ctx.beginPath();
+    ctx.arc(leftX + 1, wavePts[0].y + 2, FLUID.MENISCUS_WIDTH, -Math.PI * 0.6, Math.PI * 0.1);
+    ctx.strokeStyle = COLORS.meniscus;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(rightX - 1, wavePts[wavePts.length - 1].y + 2, FLUID.MENISCUS_WIDTH, Math.PI * 0.9, Math.PI * 1.6);
+    ctx.stroke();
+
+    // --- Temperature heat shimmer (subtle upward tint gradient) ---
+    if (cs.temperature > 60) {
+      const heat = clamp((cs.temperature - 60) / 60, 0, 1);
+      const hg = ctx.createLinearGradient(0, botY, 0, topY);
+      hg.addColorStop(0, `rgba(251,146,60,${0.10 * heat})`);
+      hg.addColorStop(1, 'rgba(251,146,60,0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      this._beakerPath(ctx, g.innerX, g.innerY, g.innerW, g.innerH);
+      ctx.lineTo(g.innerX + g.innerW, g.innerY);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     ctx.restore();
   };
 
-  /* ----------------------------------------------------------------------
-   * 6.5 Tripod stand
-   * -------------------------------------------------------------------- */
+  CanvasRenderer.prototype._blendColors = function (a, b, t) {
+    const A = hexToRgb(a), B = hexToRgb(b);
+    const r = Math.round(lerp(A.r, B.r, t));
+    const g = Math.round(lerp(A.g, B.g, t));
+    const bl = Math.round(lerp(A.b, B.b, t));
+    return `rgb(${r},${g},${bl})`;
+  };
 
-  CanvasRenderer.prototype._drawTripod = function (ctx, geom) {
-    var cx = geom.cx;
-    var topY = geom.gauzeY;
-    var baseY = geom.benchY;
-    var spread = geom.beakerW * 0.72;
+  /* ---- 5.6 SOLID CHIPS -------------------------------------------- */
+  CanvasRenderer.prototype._drawSolidChips = function (ctx) {
+    for (const c of this.chips) c.draw(ctx);
+  };
 
-    ctx.strokeStyle = "#2a3340";
-    ctx.lineWidth = 4;
-    ctx.lineCap = "round";
+  /* ---- 5.7 SEDIMENTS ---------------------------------------------- */
+  CanvasRenderer.prototype._drawSediments = function (ctx) {
+    // draw settled ones first (below), suspended ones above
+    const settled  = this.sediments.filter(s => s.settled);
+    const floating = this.sediments.filter(s => !s.settled);
+    for (const s of floating) s.draw(ctx);
+    for (const s of settled)  s.draw(ctx);
+  };
 
-    /* left leg */
+  /* ---- 5.8 BUBBLES ------------------------------------------------- */
+  CanvasRenderer.prototype._drawBubbles = function (ctx) {
+    for (const b of this.bubbles) b.draw(ctx);
+  };
+
+  /* ---- 5.9 SMOKES -------------------------------------------------- */
+  CanvasRenderer.prototype._drawSmokes = function (ctx, cs) {
+    // Draw smokes above the beaker rim so they waft upward and out
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    for (const s of this.smokes) s.draw(ctx);
+    ctx.restore();
+  };
+
+  /* ---- 5.10 BEAKER FRONT (glass overlay, rim, graduations) -------- */
+  CanvasRenderer.prototype._drawBeakerFront = function (ctx, cs) {
+    const g = this.geo;
+    ctx.save();
+
+    /* --- Rim (top lip) --- */
     ctx.beginPath();
-    ctx.moveTo(cx - spread * 0.5, topY + 2);
-    ctx.lineTo(cx - spread * 0.85, baseY - 2);
-    ctx.stroke();
-
-    /* right leg */
-    ctx.beginPath();
-    ctx.moveTo(cx + spread * 0.5, topY + 2);
-    ctx.lineTo(cx + spread * 0.85, baseY - 2);
-    ctx.stroke();
-
-    /* highlight on legs */
-    ctx.strokeStyle = "rgba(180, 210, 240, 0.28)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(cx - spread * 0.5 + 1.2, topY + 3);
-    ctx.lineTo(cx - spread * 0.85 + 1.2, baseY - 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx + spread * 0.5 + 1.2, topY + 3);
-    ctx.lineTo(cx + spread * 0.85 + 1.2, baseY - 2);
-    ctx.stroke();
-
-    /* horizontal support ring at the top */
-    ctx.strokeStyle = "#3a4552";
+    ctx.ellipse(
+      g.beakerX + g.beakerW / 2,
+      g.beakerY,
+      g.beakerW / 2,
+      VESSEL.LIP * 0.55,
+      0, 0, Math.PI * 2
+    );
+    ctx.strokeStyle = COLORS.glassEdge;
     ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(cx - spread * 0.55, topY);
-    ctx.lineTo(cx + spread * 0.55, topY);
-    ctx.stroke();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.6 Wire gauze
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawGauze = function (ctx, geom) {
-    var left = geom.beakerLeft - 22;
-    var right = geom.beakerRight + 22;
-    var y = geom.gauzeY;
-    var thick = 4;
-
-    /* plate */
-    ctx.fillStyle = "#1e242c";
-    ctx.fillRect(left, y - thick, right - left, thick);
-
-    /* mesh cross-hatch */
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(left, y - thick, right - left, thick);
-    ctx.clip();
-    ctx.strokeStyle = "rgba(180, 200, 220, 0.4)";
-    ctx.lineWidth = 1;
-    for (var x = left; x <= right; x += 4) {
-      ctx.beginPath();
-      ctx.moveTo(x, y - thick);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = "rgba(140, 170, 200, 0.32)";
-    for (var yy = y - thick; yy <= y; yy += 2) {
-      ctx.beginPath();
-      ctx.moveTo(left, yy);
-      ctx.lineTo(right, yy);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    /* top and bottom outlines */
-    ctx.strokeStyle = "#4a5663";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(left, y - thick + 0.5);
-    ctx.lineTo(right, y - thick + 0.5);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(left, y - 0.5);
-    ctx.lineTo(right, y - 0.5);
-    ctx.stroke();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.7 Beaker back glass
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawBeakerBack = function (ctx, geom) {
-    var x = geom.beakerX;
-    var w = geom.beakerW;
-    var topY = geom.beakerTopY;
-    var botY = geom.beakerBottomY;
-    var r = 10;
-
-    ctx.save();
-    ctx.beginPath();
-    this._beakerPath(ctx, geom, 0);
-    /* glass interior — translucent cool blue */
-    var g = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
-    g.addColorStop(0, "rgba(140, 200, 240, 0.09)");
-    g.addColorStop(0.5, "rgba(180, 220, 250, 0.045)");
-    g.addColorStop(1, "rgba(140, 200, 240, 0.09)");
-    ctx.fillStyle = g;
-    ctx.fill();
-
-    /* inner shadow near the bottom */
-    var shadow = ctx.createLinearGradient(0, botY - 30, 0, botY);
-    shadow.addColorStop(0, "rgba(0, 0, 0, 0)");
-    shadow.addColorStop(1, "rgba(0, 0, 0, 0.35)");
-    ctx.fillStyle = shadow;
-    ctx.fill();
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.8 Beaker path helper (used for clipping)
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._beakerPath = function (ctx, geom, inset) {
-    var x = geom.beakerX;
-    var w = geom.beakerW - inset * 2;
-    var topY = geom.beakerTopY + inset;
-    var botY = geom.beakerBottomY - inset;
-    var r = 10;
-
-    ctx.beginPath();
-    ctx.moveTo(x - w / 2, topY);
-    ctx.lineTo(x + w / 2, topY);
-    ctx.lineTo(x + w / 2, botY - r);
-    ctx.quadraticCurveTo(x + w / 2, botY, x + w / 2 - r, botY);
-    ctx.lineTo(x - w / 2 + r, botY);
-    ctx.quadraticCurveTo(x - w / 2, botY, x - w / 2, botY - r);
-    ctx.closePath();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.9 Liquid body
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawLiquid = function (ctx, geom) {
-    var v = this.engine && this.engine.vessel;
-    if (!v) return;
-    if (!(v.waterVolume > 0)) return;
-
-    var surfaceY = this._liquidSurfaceY();
-    if (surfaceY >= geom.innerBottomY - 1) return;
-
-    ctx.save();
-    this._beakerPath(ctx, geom, 2);
-    ctx.clip();
-
-    /* body gradient: slightly darker at the bottom */
-    var colour = this._currentColor;
-    var top = mixHex(colour, "#ffffff", 0.10);
-    var bot = mixHex(colour, "#000000", 0.32);
-
-    var grad = ctx.createLinearGradient(0, surfaceY, 0, geom.innerBottomY);
-    grad.addColorStop(0, rgba(top, 0.78));
-    grad.addColorStop(0.55, rgba(colour, 0.88));
-    grad.addColorStop(1, rgba(bot, 0.94));
-
-    ctx.fillStyle = grad;
-    ctx.fillRect(geom.innerLeft - 2, surfaceY, geom.innerW + 4, geom.innerBottomY - surfaceY + 6);
-
-    /* side shading inside the glass */
-    var shade = ctx.createLinearGradient(geom.innerLeft, 0, geom.innerLeft + 22, 0);
-    shade.addColorStop(0, "rgba(255, 255, 255, 0.16)");
-    shade.addColorStop(1, "rgba(255, 255, 255, 0)");
-    ctx.fillStyle = shade;
-    ctx.fillRect(geom.innerLeft - 2, surfaceY, 22, geom.innerBottomY - surfaceY + 6);
-
-    var shadeR = ctx.createLinearGradient(geom.innerRight - 22, 0, geom.innerRight, 0);
-    shadeR.addColorStop(0, "rgba(0, 0, 0, 0)");
-    shadeR.addColorStop(1, "rgba(0, 0, 0, 0.22)");
-    ctx.fillStyle = shadeR;
-    ctx.fillRect(geom.innerRight - 22, surfaceY, 22, geom.innerBottomY - surfaceY + 6);
-
-    /* turbidity overlay */
-    if (v.turbidity > 0.05) {
-      ctx.fillStyle = "rgba(240, 240, 240, " + clamp(v.turbidity * 0.28, 0, 0.4) + ")";
-      ctx.fillRect(geom.innerLeft - 2, surfaceY, geom.innerW + 4, geom.innerBottomY - surfaceY + 6);
-    }
-
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.10 Precipitate bed
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawPrecipitateBed = function (ctx, geom) {
-    var v = this.engine && this.engine.vessel;
-    if (!v) return;
-    if (!v.precipitates.length) return;
-
-    /* total mass & weighted colour */
-    var totalMass = 0;
-    var rAcc = 0, gAcc = 0, bAcc = 0;
-    for (var i = 0; i < v.precipitates.length; i++) {
-      var p = v.precipitates[i];
-      totalMass += p.mass;
-      var c = hexToRgb(p.color);
-      rAcc += c.r * p.mass;
-      gAcc += c.g * p.mass;
-      bAcc += c.b * p.mass;
-    }
-    if (totalMass < 0.001) return;
-
-    var bedColor = rgbToHex(rAcc / totalMass, gAcc / totalMass, bAcc / totalMass);
-    var bedH = clamp(totalMass * 4.5, 2, geom.innerH * 0.35);
-    var bedTop = geom.innerBottomY - bedH;
-
-    ctx.save();
-    this._beakerPath(ctx, geom, 2);
-    ctx.clip();
-
-    /* bed body */
-    var grad = ctx.createLinearGradient(0, bedTop, 0, geom.innerBottomY);
-    grad.addColorStop(0, rgba(mixHex(bedColor, "#ffffff", 0.18), 0.95));
-    grad.addColorStop(0.4, rgba(bedColor, 1));
-    grad.addColorStop(1, rgba(mixHex(bedColor, "#000000", 0.3), 1));
-    ctx.fillStyle = grad;
-
-    /* wavy top surface */
-    ctx.beginPath();
-    ctx.moveTo(geom.innerLeft, geom.innerBottomY + 2);
-    ctx.lineTo(geom.innerLeft, bedTop);
-    var steps = 14;
-    for (var s = 0; s <= steps; s++) {
-      var t = s / steps;
-      var x = geom.innerLeft + t * geom.innerW;
-      var wob = Math.sin(t * Math.PI * 3 + this.t * 0.6) * 0.8;
-      ctx.lineTo(x, bedTop + wob);
-    }
-    ctx.lineTo(geom.innerRight, geom.innerBottomY + 2);
-    ctx.closePath();
-    ctx.fill();
-
-    /* subtle specular highlight along the surface */
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    var first = true;
-    for (var s2 = 0; s2 <= steps; s2++) {
-      var t2 = s2 / steps;
-      var x2 = geom.innerLeft + t2 * geom.innerW;
-      var wob2 = Math.sin(t2 * Math.PI * 3 + this.t * 0.6) * 0.8;
-      if (first) { ctx.moveTo(x2, bedTop + wob2); first = false; }
-      else ctx.lineTo(x2, bedTop + wob2);
-    }
     ctx.stroke();
 
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.11 Bubbles
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawBubbles = function (ctx, geom) {
-    ctx.save();
-    this._beakerPath(ctx, geom, 2);
-    ctx.clip();
-    for (var i = 0; i < this.bubbles.length; i++) {
-      this.bubbles[i].draw(ctx);
-    }
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.12 Falling precipitate particles
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawFallingParticles = function (ctx, geom) {
-    ctx.save();
-    this._beakerPath(ctx, geom, 2);
-    ctx.clip();
-    for (var i = 0; i < this.particles.length; i++) {
-      var p = this.particles[i];
-      if (!p.settled) p.draw(ctx);
-    }
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.13 Meniscus
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawMeniscus = function (ctx, geom) {
-    var v = this.engine && this.engine.vessel;
-    if (!v || !(v.waterVolume > 0)) return;
-    var surfaceY = this._liquidSurfaceY();
-    if (surfaceY >= geom.innerBottomY - 1) return;
-
-    ctx.save();
-    this._beakerPath(ctx, geom, 2);
-    ctx.clip();
-
-    /* surface line — slight dip at the centre */
-    var dip = 3.2;
     ctx.beginPath();
-    ctx.moveTo(geom.innerLeft, surfaceY);
-    ctx.quadraticCurveTo(geom.cx, surfaceY + dip * 2, geom.innerRight, surfaceY);
-    ctx.lineTo(geom.innerRight, surfaceY + 6);
-    ctx.quadraticCurveTo(geom.cx, surfaceY + dip * 2 + 6, geom.innerLeft, surfaceY + 6);
-    ctx.closePath();
-
-    /* highlight band */
-    var highlight = ctx.createLinearGradient(0, surfaceY - 3, 0, surfaceY + 5);
-    highlight.addColorStop(0, "rgba(255, 255, 255, 0.55)");
-    highlight.addColorStop(0.55, "rgba(255, 255, 255, 0.15)");
-    highlight.addColorStop(1, "rgba(255, 255, 255, 0)");
-    ctx.fillStyle = highlight;
-    ctx.fill();
-
-    /* thin bright edge line */
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(geom.innerLeft, surfaceY);
-    ctx.quadraticCurveTo(geom.cx, surfaceY + dip * 2, geom.innerRight, surfaceY);
-    ctx.stroke();
-
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.14 Magnetic stirrer vortex
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawVortex = function (ctx, geom) {
-    var v = this.engine && this.engine.vessel;
-    if (!v || !v.stirring || v.stirRate < 0.05) return;
-    if (!(v.waterVolume > 0)) return;
-
-    var rate = v.stirRate;
-    var surfaceY = this._liquidSurfaceY();
-    if (surfaceY >= geom.innerBottomY - 1) return;
-
-    var funnelDepth = rate * geom.innerH * 0.20;
-    var funnelW = geom.innerW * 0.55 * rate;
-
-    ctx.save();
-    this._beakerPath(ctx, geom, 2);
-    ctx.clip();
-
-    /* --- funnel: an ellipse with a deeper centre --- */
-    ctx.beginPath();
-    ctx.moveTo(geom.innerLeft, surfaceY + 2);
-    ctx.quadraticCurveTo(geom.cx, surfaceY + funnelDepth * 2.1, geom.innerRight, surfaceY + 2);
-    ctx.lineTo(geom.innerRight, surfaceY + 4);
-    ctx.quadraticCurveTo(geom.cx, surfaceY + funnelDepth * 2.1 + 3, geom.innerLeft, surfaceY + 4);
-    ctx.closePath();
-
-    var grad = ctx.createRadialGradient(geom.cx, surfaceY + funnelDepth * 0.9, 2, geom.cx, surfaceY + funnelDepth * 0.9, funnelW);
-    grad.addColorStop(0, "rgba(20, 30, 45, 0.55)");
-    grad.addColorStop(0.6, "rgba(40, 70, 100, 0.35)");
-    grad.addColorStop(1, "rgba(200, 230, 255, 0)");
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    /* --- rotating helical streaks --- */
-    var streakAlpha = 0.35 + rate * 0.35;
-    ctx.lineWidth = 1.2;
-    for (var k = 0; k < 6; k++) {
-      var phase = this._vortexAngle + (k / 6) * Math.PI * 2;
-      var radius = funnelW * (0.35 + 0.6 * (k % 3) / 2);
-      var cy = surfaceY + funnelDepth * 0.55;
-      ctx.strokeStyle = "rgba(220, 240, 255, " + (streakAlpha * (0.5 + 0.5 * Math.sin(phase))) + ")";
-      ctx.beginPath();
-      ctx.ellipse(geom.cx, cy, radius, radius * 0.28, phase, 0, Math.PI * 1.2);
-      ctx.stroke();
-    }
-
-    /* --- highlight ring at the funnel lip --- */
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.ellipse(geom.cx, surfaceY + 1.5, funnelW * 0.85, funnelDepth * 0.22 + 2, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.15 Beaker glass front
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawBeakerGlass = function (ctx, geom) {
-    /* glass outline */
-    ctx.save();
-    this._beakerPath(ctx, geom, 0);
-
-    /* outer stroke */
-    ctx.strokeStyle = "rgba(200, 230, 255, 0.75)";
-    ctx.lineWidth = 2.2;
-    ctx.stroke();
-
-    /* inner stroke for depth */
-    ctx.strokeStyle = "rgba(140, 180, 220, 0.35)";
-    ctx.lineWidth = 1;
-    this._beakerPath(ctx, geom, 3);
-    ctx.stroke();
-
-    /* left sheen */
-    var sheen = ctx.createLinearGradient(geom.beakerLeft, 0, geom.beakerLeft + 40, 0);
-    sheen.addColorStop(0, "rgba(255, 255, 255, 0)");
-    sheen.addColorStop(0.5, "rgba(255, 255, 255, 0.38)");
-    sheen.addColorStop(0.65, "rgba(255, 255, 255, 0.10)");
-    sheen.addColorStop(1, "rgba(255, 255, 255, 0)");
-    ctx.save();
-    this._beakerPath(ctx, geom, 0);
-    ctx.clip();
-    ctx.fillStyle = sheen;
-    ctx.fillRect(geom.beakerLeft + 6, geom.beakerTopY + 4, 42, geom.beakerH - 8);
-    ctx.restore();
-
-    /* right subtle shadow */
-    var shadow = ctx.createLinearGradient(geom.beakerRight - 30, 0, geom.beakerRight, 0);
-    shadow.addColorStop(0, "rgba(0, 0, 0, 0)");
-    shadow.addColorStop(1, "rgba(0, 0, 0, 0.30)");
-    ctx.save();
-    this._beakerPath(ctx, geom, 0);
-    ctx.clip();
-    ctx.fillStyle = shadow;
-    ctx.fillRect(geom.beakerRight - 30, geom.beakerTopY + 4, 30, geom.beakerH - 8);
-    ctx.restore();
-
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.16 Graduation marks
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawGraduations = function (ctx, geom) {
-    var marks = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500];
-    var v = this.engine && this.engine.vessel;
-    var volML = v ? v.waterVolume * 1000 : 0;
-
-    ctx.save();
-
-    for (var i = 0; i < marks.length; i++) {
-      var mL = marks[i];
-      var frac = mL / 500;
-      var y = geom.innerBottomY - frac * geom.innerH;
-      if (y < geom.beakerTopY + 6) continue;
-
-      var isMajor = (mL % 100 === 0);
-      var len = isMajor ? 26 : 14;
-
-      /* tick mark on the right side */
-      ctx.strokeStyle = isMajor
-        ? "rgba(220, 240, 255, 0.85)"
-        : "rgba(190, 210, 230, 0.55)";
-      ctx.lineWidth = isMajor ? 1.6 : 1.1;
-      ctx.beginPath();
-      ctx.moveTo(geom.beakerRight - 6 - len, y);
-      ctx.lineTo(geom.beakerRight - 6, y);
-      ctx.stroke();
-
-      /* label */
-      if (isMajor) {
-        ctx.fillStyle = "rgba(220, 240, 255, 0.85)";
-        ctx.font = "10px 'SF Mono', Menlo, Consolas, monospace";
-        ctx.textAlign = "right";
-        ctx.textBaseline = "middle";
-        ctx.fillText(String(mL), geom.beakerRight - 6 - len - 5, y);
-      }
-
-      /* highlighted tick at the current volume */
-      if (Math.abs(volML - mL) < 18) {
-        ctx.strokeStyle = "rgba(120, 220, 255, 0.9)";
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.moveTo(geom.beakerRight - 6 - len - 4, y);
-        ctx.lineTo(geom.beakerRight - 6, y);
-        ctx.stroke();
-      }
-    }
-
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.17 Beaker rim
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawBeakerRim = function (ctx, geom) {
-    var x = geom.beakerX;
-    var topY = geom.beakerTopY;
-    var w = geom.beakerW;
-
-    /* rim body */
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(x, topY, w * 0.5 + 2, 4.5, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(200, 230, 255, 0.35)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(220, 240, 255, 0.85)";
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-
-    /* inner rim shadow */
-    ctx.beginPath();
-    ctx.ellipse(x, topY + 2.5, w * 0.5 - 2, 2.6, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(60, 100, 140, 0.55)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    /* spout on the top-right */
-    ctx.beginPath();
-    ctx.moveTo(x + w * 0.5 - 2, topY - 1);
-    ctx.quadraticCurveTo(x + w * 0.5 + 12, topY - 6, x + w * 0.5 + 14, topY + 4);
-    ctx.quadraticCurveTo(x + w * 0.5 + 6, topY + 4, x + w * 0.5 - 2, topY + 3);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(200, 230, 255, 0.55)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(220, 240, 255, 0.9)";
+    ctx.ellipse(
+      g.beakerX + g.beakerW / 2,
+      g.beakerY,
+      g.beakerW / 2 - 2,
+      VESSEL.LIP * 0.55 - 1,
+      0, 0, Math.PI * 2
+    );
+    ctx.strokeStyle = 'rgba(226,232,240,0.55)';
     ctx.lineWidth = 1.4;
     ctx.stroke();
 
-    ctx.restore();
-  };
+    /* --- Beaker outline (front wall) --- */
+    ctx.beginPath();
+    this._beakerPath(ctx, g.beakerX, g.beakerY, g.beakerW, g.beakerH);
+    ctx.strokeStyle = COLORS.glassEdge;
+    ctx.lineWidth = VESSEL.WALL;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
 
-  /* ----------------------------------------------------------------------
-   * 6.18 Gas puffs
-   * -------------------------------------------------------------------- */
+    /* --- Vertical glass highlight --- */
+    const hx = g.beakerX + 12;
+    const hg = ctx.createLinearGradient(hx, g.beakerY, hx + 6, g.beakerY);
+    hg.addColorStop(0, 'rgba(255,255,255,0)');
+    hg.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+    hg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hg;
+    ctx.fillRect(hx, g.beakerY + 8, 6, g.beakerH - 20);
 
-  CanvasRenderer.prototype._drawGasPuffs = function (ctx, geom) {
-    for (var i = 0; i < this.gasPuffs.length; i++) {
-      this.gasPuffs[i].draw(ctx);
-    }
-  };
+    /* --- Bottom spill shadow inside beaker --- */
+    const botG = ctx.createLinearGradient(0, g.floorY - 16, 0, g.floorY);
+    botG.addColorStop(0, 'rgba(15,23,42,0)');
+    botG.addColorStop(1, 'rgba(15,23,42,0.45)');
+    ctx.fillStyle = botG;
+    ctx.fillRect(g.innerX, g.floorY - 16, g.innerW, 16);
 
-  /* ----------------------------------------------------------------------
-   * 6.19 Sparks
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawSparks = function (ctx, geom) {
-    for (var i = 0; i < this.sparks.length; i++) {
-      this.sparks[i].draw(ctx);
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.20 Shockwaves
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawShockwaves = function (ctx, geom) {
-    for (var i = 0; i < this.shockwaves.length; i++) {
-      this.shockwaves[i].draw(ctx);
-    }
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.21 Flash overlay
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawFlash = function (ctx, geom) {
-    if (this.flashAlpha <= 0.005) return;
-    ctx.save();
-    ctx.globalAlpha = clamp(this.flashAlpha, 0, 1);
-    ctx.fillStyle = this.flashColor;
-    ctx.fillRect(0, 0, geom.W, geom.H);
-    ctx.restore();
-  };
-
-  /* ----------------------------------------------------------------------
-   * 6.22 HUD
-   * -------------------------------------------------------------------- */
-
-  CanvasRenderer.prototype._drawHUD = function (ctx, geom) {
-    var v = this.engine && this.engine.vessel;
-    if (!v) return;
-
-    var pad = 14;
-    var panelW = 168;
-    var panelH = 132;
-    var x = pad;
-    var y = pad;
-
-    ctx.save();
-
-    /* panel background */
-    ctx.fillStyle = "rgba(8, 16, 26, 0.72)";
-    ctx.strokeStyle = "rgba(120, 180, 230, 0.35)";
+    /* --- Graduation marks (every 100 mL) --- */
+    const marks = [100, 200, 300, 400, 500];
+    ctx.strokeStyle = COLORS.graduation;
+    ctx.fillStyle = 'rgba(226,232,240,0.6)';
     ctx.lineWidth = 1;
-    this._roundRect(ctx, x, y, panelW, panelH, 8);
-    ctx.fill();
-    ctx.stroke();
-
-    /* title */
-    ctx.fillStyle = "#7dd3fc";
-    ctx.font = "600 11px 'SF Pro Text', -apple-system, system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText("VIRTUALAB PRO", x + 12, y + 10);
-
-    /* divider */
-    ctx.strokeStyle = "rgba(120, 180, 230, 0.22)";
-    ctx.beginPath();
-    ctx.moveTo(x + 10, y + 26);
-    ctx.lineTo(x + panelW - 10, y + 26);
-    ctx.stroke();
-
-    /* values */
-    var tempC = v.temperature - 273.15;
-    var volML = v.waterVolume * 1000;
-    var ph = (v.pH !== null && v.pH !== undefined) ? v.pH.toFixed(2) : "—";
-
-    var rows = [
-      { label: "Temp",  value: (tempC).toFixed(1) + " °C" },
-      { label: "pH",    value: ph },
-      { label: "Vol",   value: volML.toFixed(1) + " mL" },
-      { label: "Stir",  value: v.stirring ? (v.stirRate * 100).toFixed(0) + " %" : "off" },
-      { label: "Flame", value: v.flamePower > 0.02 ? (v.flamePower * 100).toFixed(0) + " %" : "off" }
-    ];
-
-    ctx.font = "10.5px 'SF Mono', Menlo, Consolas, monospace";
-    for (var i = 0; i < rows.length; i++) {
-      var ry = y + 36 + i * 18;
-      ctx.fillStyle = "rgba(160, 200, 240, 0.65)";
-      ctx.textAlign = "left";
-      ctx.fillText(rows[i].label, x + 12, ry);
-
-      /* value — colour-coded for pH and temperature */
-      var col = "#e6f4ff";
-      if (rows[i].label === "pH" && v.pH !== null) {
-        if (v.pH < 3) col = "#ff7050";
-        else if (v.pH < 6) col = "#ffb060";
-        else if (v.pH > 11) col = "#8080ff";
-        else if (v.pH > 8) col = "#80b0ff";
-        else col = "#80e0a0";
-      }
-      if (rows[i].label === "Temp" && tempC > 60) col = "#ffb060";
-      if (rows[i].label === "Temp" && tempC > 90) col = "#ff6040";
-
-      ctx.fillStyle = col;
-      ctx.textAlign = "right";
-      ctx.fillText(rows[i].value, x + panelW - 12, ry);
-    }
-
-    /* reactivity indicator (pulsing dot) */
-    if (v.reactionCount > 0) {
-      var pulse = 0.55 + 0.45 * Math.sin(this.t * 6);
-      ctx.fillStyle = "rgba(255, 200, 100, " + pulse + ")";
+    ctx.font = '9px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (const v of marks) {
+      const y = this._fluidTopY(v);
+      const markW = 20;
       ctx.beginPath();
-      ctx.arc(x + panelW - 12, y + 12, 3.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    /* gas legend (bottom-right) */
-    var gasIds = [];
-    for (var gid in v.gases) {
-      if (Object.prototype.hasOwnProperty.call(v.gases, gid) && v.gases[gid] > 1e-5) {
-        gasIds.push(gid);
-      }
-    }
-    if (gasIds.length > 0) {
-      var lx = geom.W - pad - 130;
-      var ly = geom.H - pad - (16 + gasIds.length * 15);
-      var lw = 130;
-      var lh = 14 + gasIds.length * 15;
-
-      ctx.fillStyle = "rgba(8, 16, 26, 0.72)";
-      ctx.strokeStyle = "rgba(120, 180, 230, 0.28)";
-      ctx.lineWidth = 1;
-      this._roundRect(ctx, lx, ly, lw, lh, 6);
-      ctx.fill();
+      ctx.moveTo(g.beakerX + 8, y);
+      ctx.lineTo(g.beakerX + 8 + markW, y);
       ctx.stroke();
-
-      ctx.font = "9.5px 'SF Mono', Menlo, Consolas, monospace";
-      ctx.textBaseline = "middle";
-      for (var k = 0; k < gasIds.length; k++) {
-        var gid2 = gasIds[k];
-        var info = GAS_COLORS[gid2] || { color: "#e0e0e0" };
-        var gy = ly + 10 + k * 15;
-
-        ctx.fillStyle = info.color;
-        ctx.beginPath();
-        ctx.arc(lx + 10, gy, 3, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = "rgba(200, 225, 245, 0.9)";
-        ctx.textAlign = "left";
-        ctx.fillText(gid2, lx + 20, gy);
-
-        ctx.fillStyle = "rgba(160, 200, 240, 0.7)";
-        ctx.textAlign = "right";
-        ctx.fillText(
-          (v.gases[gid2] * 22.4136).toFixed(2) + " L",
-          lx + lw - 8, gy
-        );
-      }
+      ctx.fillText(`${v}`, g.beakerX + 32, y);
     }
+
+    /* --- Corner reflections --- */
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(g.beakerX + 3, g.beakerY + 20);
+    ctx.lineTo(g.beakerX + 3, g.beakerY + g.beakerH - 20);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(g.beakerX + g.beakerW - 3, g.beakerY + 20);
+    ctx.lineTo(g.beakerX + g.beakerW - 3, g.beakerY + g.beakerH - 20);
+    ctx.stroke();
 
     ctx.restore();
   };
 
-  CanvasRenderer.prototype._roundRect = function (ctx, x, y, w, h, r) {
+  /* ---- 5.11 TEMPERATURE GLOW AROUND BEAKER ------------------------ */
+  CanvasRenderer.prototype._drawTemperatureGlow = function (ctx, cs) {
+    if (!cs) return;
+    if (cs.temperature < 55) return;
+    const g = this.geo;
+    const heat = clamp((cs.temperature - 55) / 55, 0, 1);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const grad = ctx.createRadialGradient(
+      g.beakerX + g.beakerW / 2, g.beakerY + g.beakerH,
+      10,
+      g.beakerX + g.beakerW / 2, g.beakerY + g.beakerH,
+      g.beakerW
+    );
+    grad.addColorStop(0, `rgba(251,146,60,${0.22 * heat})`);
+    grad.addColorStop(0.6, `rgba(249,115,22,${0.08 * heat})`);
+    grad.addColorStop(1, 'rgba(249,115,22,0)');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
+    ctx.arc(g.beakerX + g.beakerW / 2, g.beakerY + g.beakerH,
+            g.beakerW * 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   };
 
   /* ==========================================================================
-   * 7. PUBLIC NAMESPACE
+   * 6. PUBLIC UTILITIES
    * ========================================================================*/
 
-  var API = CanvasRenderer;
-  API.utils = {
-    clamp:     clamp,
-    lerp:      lerp,
-    rand:      rand,
-    hexToRgb:  hexToRgb,
-    rgbToHex:  rgbToHex,
-    mixHex:    mixHex,
-    rgba:      rgba,
-    geometry:  computeGeometry
-  };
-  API.reference = {
-    ionFlameColors: ION_FLAME_COLORS,
-    gasColors:      GAS_COLORS,
-    defaultFlame:   DEFAULT_FLAME
+  /** Clear every particle (used on vessel clear/flush). */
+  CanvasRenderer.prototype.purgeParticles = function () {
+    this.bubbles.length = 0;
+    this.smokes.length = 0;
+    this.sediments.length = 0;
+    this.chips.length = 0;
+    this._smokeAccum = {};
+    this._bubbleAccum = 0;
+    this._steamAccum = 0;
   };
 
-  if (typeof console !== "undefined" && console.log) {
-    console.log(
-      "%c VirtuaLab Pro %c CanvasRenderer ready — " +
-      Object.keys(ION_FLAME_COLORS).length + " ion flame palettes, " +
-      Object.keys(GAS_COLORS).length + " gas cloud colours.",
-      "background:#0b7285;color:#fff;padding:2px 6px;border-radius:3px 0 0 3px;font-weight:700",
-      "background:#e3fafc;color:#0b7285;padding:2px 6px;border-radius:0 3px 3px 0"
-    );
+  /** Manual FX trigger — e.g. explosion burst from app.js. */
+  CanvasRenderer.prototype.burstExplosion = function (x, y, color) {
+    if (!this.geo) return;
+    const cx = x !== undefined ? x : this.geo.beakerX + this.geo.beakerW / 2;
+    const cy = y !== undefined ? y : this.geo.beakerY + this.geo.beakerH / 2;
+    const col = color || '#fb923c';
+    for (let i = 0; i < 22; i++) {
+      this.smokes.push(new Smoke(cx + rand(-20, 20), cy + rand(-20, 20), col, {
+        r: rand(12, 26), rGrow: rand(30, 60),
+        life: rand(0.7, 1.4),
+        vx: rand(-80, 80), vy: rand(-90, -30),
+        alpha: 0.5
+      }));
+    }
+    for (let i = 0; i < 30; i++) {
+      this.bubbles.push(new Bubble(cx + rand(-25, 25), cy + rand(-10, 25),
+                                   rand(2, 6), col));
+    }
+  };
+
+  /* ==========================================================================
+   * 7. SINGLETON EXPORT + AUTOWIRE
+   * ========================================================================*/
+  global.CanvasRenderer = new CanvasRenderer();
+  global.CanvasRenderer.VERSION = VERSION;
+
+  // Auto-attach + start when DOM is ready
+  function autowire() {
+    const cv = document.getElementById('labCanvas');
+    if (!cv) {
+      console.warn('[CanvasRenderer] #labCanvas not found — call attach() manually.');
+      return;
+    }
+    global.CanvasRenderer.attach(cv);
+    global.CanvasRenderer.start();
+
+    // Purge particles on vessel clear/flush
+    if (global.ChemistryEngine && global.ChemistryEngine.on) {
+      global.ChemistryEngine.on((event) => {
+        if (event === 'vessel:cleared' || event === 'vessel:flushed') {
+          global.CanvasRenderer.purgeParticles();
+        }
+        if (event === 'reaction:alkali') {
+          global.CanvasRenderer.burstExplosion(undefined, undefined, '#fb923c');
+        }
+      });
+    }
   }
 
-  return API;
-})();
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', autowire);
+    } else {
+      autowire();
+    }
+  }
+
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug(`[CanvasRenderer v${VERSION}] Online — beaker, flame, particles armed.`);
+  }
+
+})(typeof window !== 'undefined' ? window : globalThis);
