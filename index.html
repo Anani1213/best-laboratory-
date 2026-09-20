@@ -3,54 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#020617" />
-  <title>VirtuaLab Pro — University-Grade Virtual Chemistry Lab</title>
+  <meta name="theme-color" content="#0A0F1C" />
+  <title>VirtuaLab Pro — University-Grade Virtual Chemistry Laboratory</title>
 
   <!-- ==================================================================
        Tailwind CSS via CDN
        ================================================================== -->
-  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            mono: ['"JetBrains Mono"', '"Fira Code"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-            sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-          },
-          colors: {
-            lab: {
-              950: '#020617',
-              900: '#0a1120',
-              800: '#0f172a',
-              700: '#1e293b',
-              600: '#334155',
-              accent: '#38bdf8',
-              glow: '#7dd3fc',
-              danger: '#ef4444',
-              warn: '#f59e0b',
-              good: '#22c55e',
-            },
-          },
-          keyframes: {
-            pulseGlow: {
-              '0%, 100%': { boxShadow: '0 0 0 0 rgba(56,189,248,0.35)' },
-              '50%': { boxShadow: '0 0 0 12px rgba(56,189,248,0)' },
-            },
-            scan: {
-              '0%': { transform: 'translateY(-100%)' },
-              '100%': { transform: 'translateY(100%)' },
-            },
-          },
-          animation: {
-            pulseGlow: 'pulseGlow 2.6s ease-in-out infinite',
-            scan: 'scan 6s linear infinite',
-          },
-        },
-      },
-    };
-  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- ==================================================================
+       Font Awesome
+       ================================================================== -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
 
   <!-- ==================================================================
        Fonts
@@ -58,78 +28,257 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap"
     rel="stylesheet"
   />
 
   <!-- ==================================================================
-       Global styles
+       Global Styles
        ================================================================== -->
   <style>
-    html, body { height: 100%; }
-    body { font-family: 'Inter', system-ui, sans-serif; }
+    /* ---------------- Base ---------------- */
+    html, body { height: 100%; width: 100%; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: #0A0F1C;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
-    /* ---- Custom scrollbars ---- */
+    /* ---------------- Scrollbars ---------------- */
     .scroll-lab::-webkit-scrollbar { width: 8px; height: 8px; }
-    .scroll-lab::-webkit-scrollbar-track { background: rgba(15,23,42,0.6); border-radius: 4px; }
+    .scroll-lab::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 4px;
+    }
     .scroll-lab::-webkit-scrollbar-thumb {
       background: linear-gradient(180deg, #334155, #1e293b);
-      border-radius: 4px; border: 1px solid rgba(100,150,200,0.15);
+      border-radius: 4px;
+      border: 1px solid rgba(100, 150, 200, 0.15);
     }
     .scroll-lab::-webkit-scrollbar-thumb:hover {
       background: linear-gradient(180deg, #475569, #334155);
     }
     .scroll-lab { scrollbar-width: thin; scrollbar-color: #334155 rgba(15,23,42,0.4); }
 
-    /* ---- Panel surface ---- */
-    .panel {
-      background:
-        linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.88));
-      border: 1px solid rgba(100,150,200,0.14);
-      border-radius: 14px;
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.03),
-        0 8px 30px rgba(0,0,0,0.55);
-      backdrop-filter: blur(6px);
-    }
-    .panel-inset {
-      background: rgba(2,6,23,0.55);
-      border: 1px solid rgba(100,150,200,0.10);
-      border-radius: 10px;
-    }
+    /* ---------------- Canvas ---------------- */
+    #labCanvas { display: block; width: 100%; height: 100%; outline: none; }
 
-    /* ---- Subtle scanline overlay on canvas frame ---- */
-    .scanlines::before {
+    /* ---------------- Canvas radial overlay ---------------- */
+    .canvas-shell {
+      background:
+        radial-gradient(ellipse at center, rgba(30, 58, 138, 0.22) 0%, rgba(15, 23, 42, 0) 62%),
+        linear-gradient(180deg, #0F172A 0%, #0B1220 100%);
+    }
+    .canvas-shell::after {
       content: '';
       position: absolute; inset: 0;
-      background: repeating-linear-gradient(
-        to bottom,
-        rgba(255,255,255,0.012) 0px,
-        rgba(255,255,255,0.012) 1px,
-        transparent 1px,
-        transparent 3px
-      );
+      background:
+        repeating-linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.012) 0px,
+          rgba(255,255,255,0.012) 1px,
+          transparent 1px,
+          transparent 3px
+        );
       pointer-events: none;
       border-radius: inherit;
     }
 
-    /* ---- Canvas sizing ---- */
-    #labCanvas { display: block; width: 100%; height: 100%; }
+    /* ---------------- pH Display (overrides app.js internal styles) ---------------- */
+    #phDisplay {
+      --vl-ph-color: #22c55e;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    #phDisplay .vl-ph-track {
+      position: relative !important;
+      height: 14px !important;
+      border-radius: 999px !important;
+      overflow: visible !important;
+      box-shadow:
+        inset 0 1px 3px rgba(0, 0, 0, 0.75),
+        0 0 0 1px rgba(100, 150, 200, 0.2),
+        0 0 14px rgba(56, 189, 248, 0.12);
+    }
+    #phDisplay .vl-ph-marker {
+      position: absolute !important;
+      top: -4px !important;
+      width: 4px !important;
+      height: 22px !important;
+      border-radius: 2px !important;
+      background: #ffffff !important;
+      transform: translateX(-2px) !important;
+      transition: left 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      box-shadow:
+        0 0 12px rgba(255, 255, 255, 0.95),
+        0 0 22px color-mix(in srgb, var(--vl-ph-color) 60%, transparent) !important;
+    }
+    #phDisplay .vl-ph-value {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-weight: 800 !important;
+      font-size: 26px !important;
+      line-height: 1 !important;
+      font-variant-numeric: tabular-nums !important;
+      color: var(--vl-ph-color) !important;
+      transition: color 0.22s ease !important;
+      text-shadow: 0 0 18px color-mix(in srgb, var(--vl-ph-color) 55%, transparent) !important;
+    }
+    #phDisplay .vl-ph-sub {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.22em !important;
+      text-transform: uppercase !important;
+      color: #64748b !important;
+    }
 
-    /* ---- Flame slider ---- */
+    /* ---------------- Formula banner rows ---------------- */
+    #formulaBanner .vl-eq {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 12.5px !important;
+      font-weight: 600 !important;
+      line-height: 1.65 !important;
+      color: #7dd3fc !important;
+      padding: 3px 0 !important;
+      animation: vlEqIn 0.35s ease;
+    }
+    #formulaBanner .vl-eq .dh {
+      font-size: 10px !important;
+      color: #fbbf24 !important;
+      margin-left: 8px !important;
+      opacity: 0.9;
+    }
+    #formulaBanner .vl-eq.fresh {
+      color: #ffffff !important;
+      text-shadow: 0 0 16px rgba(125, 211, 252, 0.75) !important;
+    }
+    @keyframes vlEqIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---------------- Log terminal rows ---------------- */
+    #logTerminal .vl-logline {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 11px !important;
+      line-height: 1.6 !important;
+      padding: 1px 0 !important;
+      white-space: pre-wrap !important;
+      word-break: break-word !important;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.05);
+    }
+    #logTerminal .vl-logline .ts {
+      color: #475569 !important;
+      margin-right: 8px !important;
+      user-select: none;
+    }
+
+    /* ---------------- Reagent modal overrides (high-contrast inputs) ---------------- */
+    #reagentModal .vl-input,
+    #reagentModal .vl-select {
+      background: #1e293b !important;
+      color: #ffffff !important;
+      font-weight: 700 !important;
+      border: 1px solid rgba(100, 150, 200, 0.4) !important;
+    }
+    #reagentModal .vl-input::placeholder { color: #94a3b8; font-weight: 600; }
+    #reagentModal .vl-input:focus,
+    #reagentModal .vl-select:focus {
+      border-color: #38bdf8 !important;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+      outline: none !important;
+    }
+    #reagentModal .vl-item {
+      background: linear-gradient(160deg, #111a26, #0a1119) !important;
+      border: 1px solid rgba(110, 150, 200, 0.18) !important;
+      border-radius: 10px !important;
+      padding: 9px 10px !important;
+      cursor: pointer !important;
+      transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease !important;
+    }
+    #reagentModal .vl-item:hover {
+      transform: translateY(-2px) !important;
+      border-color: rgba(140, 190, 255, 0.5) !important;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5) !important;
+    }
+    #reagentModal .vl-item.sel {
+      border-color: #4fc3f7 !important;
+      box-shadow: 0 0 0 1px #4fc3f7, 0 8px 22px rgba(79, 195, 247, 0.25) !important;
+    }
+    #reagentModal .vl-item .nm { font-size: 12px; font-weight: 700; color: #e8f2ff; line-height: 1.25; }
+    #reagentModal .vl-item .fm { font-size: 13px; color: #7fd3ff; margin-top: 3px; }
+    #reagentModal .vl-item .meta {
+      font-size: 10px; color: #7c93ac; margin-top: 5px;
+      display: flex; justify-content: space-between;
+    }
+    #reagentModal .vl-btn {
+      background: linear-gradient(180deg, #1b2942, #101a29) !important;
+      color: #d8ecff !important;
+      border: 1px solid rgba(120, 170, 230, 0.35) !important;
+      border-radius: 8px !important;
+      padding: 8px 14px !important;
+      font: 600 12px/1 'JetBrains Mono', monospace !important;
+      cursor: pointer !important;
+      transition: all 0.13s ease !important;
+    }
+    #reagentModal .vl-btn:hover {
+      background: linear-gradient(180deg, #24395c, #152238) !important;
+      border-color: #4fc3f7 !important;
+    }
+    #reagentModal .vl-btn.primary {
+      background: linear-gradient(180deg, #0284c7, #075985) !important;
+      border-color: #38bdf8 !important;
+      color: #ffffff !important;
+    }
+    #reagentModal .vl-btn.primary:hover {
+      background: linear-gradient(180deg, #0ea5e9, #0369a1) !important;
+    }
+    #reagentModal .vl-btn.danger {
+      background: linear-gradient(180deg, #7f1d1d, #450a0a) !important;
+      border-color: #ef4444 !important;
+      color: #fee2e2 !important;
+    }
+    #reagentModal .vl-label {
+      font-size: 10px; letter-spacing: 0.14em; color: #7c93ac;
+      text-transform: uppercase; font-weight: 700;
+    }
+    #reagentModal .vl-row { display: flex; align-items: center; gap: 8px; }
+    #reagentModal .vl-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+      gap: 8px !important;
+      margin: 10px 0 !important;
+      padding: 2px !important;
+    }
+    #reagentModal .vl-sep {
+      height: 1px;
+      background: rgba(120, 170, 230, 0.14);
+      margin: 12px 0;
+    }
+    #reagentModal .vl-chip {
+      display: inline-block;
+      font-size: 9px; letter-spacing: 0.1em;
+      padding: 2px 7px; border-radius: 99px;
+      background: rgba(79, 195, 247, 0.14);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      color: #8fd8ff; margin-right: 5px; font-weight: 700;
+    }
+
+    /* ---------------- Flame slider ---------------- */
     #flameSlider {
       -webkit-appearance: none; appearance: none;
       width: 100%; height: 10px;
       background: linear-gradient(90deg,
-        #0ea5e9 0%,
-        #22c55e 28%,
-        #eab308 55%,
-        #f97316 78%,
-        #ef4444 100%);
+        #0ea5e9 0%, #22c55e 28%, #eab308 55%, #f97316 78%, #ef4444 100%);
       border-radius: 999px;
       outline: none;
       cursor: pointer;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.7);
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7);
     }
     #flameSlider::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
@@ -137,7 +286,9 @@
       border-radius: 50%;
       background: radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 55%, #64748b);
       border: 2px solid #0f172a;
-      box-shadow: 0 0 0 1px #38bdf8, 0 4px 14px rgba(56,189,248,0.45);
+      box-shadow:
+        0 0 0 1px #38bdf8,
+        0 4px 14px rgba(56, 189, 248, 0.45);
       cursor: grab;
       transition: transform 0.12s ease;
     }
@@ -147,345 +298,269 @@
       border-radius: 50%;
       background: radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 55%, #64748b);
       border: 2px solid #0f172a;
-      box-shadow: 0 0 0 1px #38bdf8, 0 4px 14px rgba(56,189,248,0.45);
+      box-shadow: 0 0 0 1px #38bdf8, 0 4px 14px rgba(56, 189, 248, 0.45);
       cursor: grab;
     }
 
-    /* ---- pH display host: gradient bar built by app.js ---- */
-    #phDisplay {
-      --vl-ph-color: #22c55e;
-      min-height: 62px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      justify-content: center;
+    /* ---------------- Library button shine ---------------- */
+    .library-btn { position: relative; overflow: hidden; }
+    .library-btn::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(120deg,
+        transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
+      transform: translateX(-100%);
+      transition: transform 0.75s ease;
+      pointer-events: none;
     }
-    #phDisplay .vl-ph-track {
-      position: relative;
-      height: 14px;
-      border-radius: 999px;
-      overflow: visible;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.75), 0 0 0 1px rgba(100,150,200,0.2);
-    }
-    #phDisplay .vl-ph-marker {
-      position: absolute;
-      top: -4px;
-      width: 4px;
-      height: 22px;
-      border-radius: 2px;
-      background: #ffffff;
-      transform: translateX(-2px);
-      transition: left 0.18s cubic-bezier(0.4,0,0.2,1);
-      box-shadow: 0 0 12px rgba(255,255,255,0.9);
-    }
-    #phDisplay .vl-ph-value {
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700;
-      font-size: 22px;
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
-      color: var(--vl-ph-color);
-      transition: color 0.22s ease;
-      text-shadow: 0 0 18px color-mix(in srgb, var(--vl-ph-color) 55%, transparent);
-    }
-    #phDisplay .vl-ph-sub {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: #64748b;
-    }
+    .library-btn:hover::after { transform: translateX(100%); }
 
-    /* ---- Formula banner rows (from app.js) ---- */
-    #formulaBanner .vl-eq {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      font-weight: 600;
-      line-height: 1.6;
-      color: #7dd3fc;
-      padding: 3px 0;
-      animation: fadeSlide 0.35s ease;
-    }
-    #formulaBanner .vl-eq .dh {
-      font-size: 10px;
-      color: #fbbf24;
-      margin-left: 8px;
-      opacity: 0.85;
-    }
-    #formulaBanner .vl-eq.fresh {
-      color: #ffffff;
-      text-shadow: 0 0 16px rgba(125,211,252,0.75);
-    }
-    @keyframes fadeSlide {
-      from { opacity: 0; transform: translateY(-6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ---- Log terminal rows (from app.js) ---- */
-    #logTerminal .vl-logline {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      line-height: 1.55;
-      padding: 1px 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-      border-bottom: 1px solid rgba(148,163,184,0.05);
-    }
-    #logTerminal .vl-logline .ts {
-      color: #475569;
-      margin-right: 8px;
-      user-select: none;
-    }
-
-    /* ---- Telemetry rows ---- */
-    .tele-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      padding: 5px 0;
-      border-bottom: 1px dashed rgba(148,163,184,0.10);
-    }
-    .tele-row:last-child { border-bottom: none; }
+    /* ---------------- Telemetry key/value rows ---------------- */
     .tele-key {
+      font-family: 'JetBrains Mono', monospace;
       font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.15em;
+      font-weight: 700;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
       color: #64748b;
     }
     .tele-val {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
+      font-size: 15px;
       font-weight: 700;
       color: #7dd3fc;
       font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 12px rgba(125, 211, 252, 0.18);
+    }
+    .tele-cell {
+      padding: 12px 14px;
+      background: rgba(2, 6, 23, 0.5);
+      border: 1px solid rgba(100, 150, 200, 0.12);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+    .tele-cell:hover {
+      border-color: rgba(100, 150, 200, 0.3);
+      background: rgba(15, 23, 42, 0.65);
     }
 
-    /* ---- Reagent modal ---- */
-    #reagentModal { display: none; }
-    #reagentModal.open { display: flex; }
-
-    /* ---- Big library button pulse ---- */
-    .library-btn {
-      position: relative;
-      overflow: hidden;
-    }
-    .library-btn::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.18) 50%, transparent 70%);
-      transform: translateX(-100%);
-      transition: transform 0.7s ease;
-    }
-    .library-btn:hover::after { transform: translateX(100%); }
-
-    /* ---- Utility ---- */
+    /* ---------------- Utility ---------------- */
     .no-select { user-select: none; -webkit-user-select: none; }
-
-    /* ---- Prevent mobile zoom quirks ---- */
     input[type="number"]::-webkit-outer-spin-button,
     input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+    /* ---------------- Animations ---------------- */
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.85); }
+    }
+    .pulse-dot { animation: pulseDot 1.6s ease-in-out infinite; }
+
+    /* ---------------- Reduced motion ---------------- */
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+    }
   </style>
 </head>
 
-<body class="h-screen max-h-screen overflow-hidden bg-slate-950 flex flex-row p-2 gap-3 text-slate-100">
+<!-- ====================================================================
+     BODY — Strict 2-column desktop viewport
+     ==================================================================== -->
+<body class="h-screen w-screen overflow-hidden bg-[#0A0F1C] text-slate-200 p-2 flex flex-row gap-3 font-sans">
 
   <!-- ==================================================================
-       LEFT COLUMN — 50%
+       LEFT COLUMN — 50% (canvas + reaction state + system log)
        ================================================================== -->
   <section class="w-1/2 h-full flex flex-col gap-3 min-w-0">
 
     <!-- ---------------------------------------------------------------
-         Canvas wrapper (top)
+         1. CANVAS VIEWPORT (top, fixed height)
          --------------------------------------------------------------- -->
-    <div class="relative panel scanlines overflow-hidden flex-1 min-h-0">
+    <div class="canvas-shell relative rounded-xl border border-slate-700/60 overflow-hidden shadow-[0_10px_40px_-10px_rgba(0,0,0,0.9)] h-[38vh] flex-none">
       <!-- Header strip -->
       <div class="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-3 py-2
-                  bg-gradient-to-b from-slate-950/95 to-transparent pointer-events-none">
+                  bg-gradient-to-b from-[#0A0F1C]/95 to-transparent pointer-events-none">
         <div class="flex items-center gap-2">
-          <span class="inline-block w-2 h-2 rounded-full bg-emerald-400
-                       shadow-[0_0_10px_rgba(52,211,153,0.9)]"></span>
-          <span class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] pulse-dot"></span>
+          <span class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase no-select">
             LIVE · VESSEL VIEWPORT
           </span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="font-mono text-[10px] font-bold tracking-[0.18em] text-slate-500">
+          <span class="font-mono text-[10px] font-bold tracking-[0.18em] text-slate-500 uppercase no-select">
             500 mL PYREX
           </span>
-          <span class="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 pulse-dot"></span>
         </div>
       </div>
 
       <!-- The canvas -->
       <canvas id="labCanvas" class="w-full h-full"></canvas>
 
-      <!-- Bottom-right hint -->
-      <div class="absolute bottom-2 right-3 z-10 pointer-events-none">
-        <span class="font-mono text-[9px] tracking-[0.2em] text-slate-500/70">
-          VIRTUALAB PRO · ENGINE v1.0
+      <!-- Bottom-right signature -->
+      <div class="absolute bottom-2 right-3 z-10 pointer-events-none no-select">
+        <span class="font-mono text-[9px] tracking-[0.2em] text-slate-500/70 uppercase">
+          VirtuaLab Pro · Engine v1.0
         </span>
       </div>
     </div>
 
     <!-- ---------------------------------------------------------------
-         Reaction State / Balanced Equation / pH bar (middle)
+         2. LIVE REACTION STATE (middle)
          --------------------------------------------------------------- -->
-    <div class="panel p-3 flex flex-col gap-3">
+    <div class="rounded-xl border border-slate-700/60 bg-[#0F172A]/85 p-3 flex flex-col gap-3 flex-none shadow-lg">
 
       <!-- Section header -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4"/>
-            <path d="M9 3v18"/><path d="M15 3v18"/>
-          </svg>
-          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+          <i class="fa-solid fa-flask-vial text-sky-400 text-sm"></i>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase no-select">
             Reaction State
           </h2>
         </div>
-        <span class="font-mono text-[9px] tracking-[0.18em] text-slate-500 uppercase">
+        <span class="font-mono text-[9px] tracking-[0.18em] text-slate-500 uppercase no-select">
           Stoichiometry · ΔH°₂₉₈
         </span>
       </div>
 
-      <!-- Two-column layout: equation banner (left) + pH display (right) -->
+      <!-- Two-column: equation banner + pH display -->
       <div class="grid grid-cols-5 gap-3">
 
-        <!-- Balanced equation area -->
-        <div class="col-span-3 panel-inset p-3 min-h-[112px] max-h-[148px] overflow-y-auto scroll-lab">
-          <div class="font-mono text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-1.5">
-            Balanced Equation
+        <!-- Balanced equation banner -->
+        <div class="col-span-3 rounded-lg bg-[#050811] border border-slate-800/80 p-3
+                    min-h-[118px] max-h-[160px] overflow-y-auto scroll-lab">
+          <div class="font-mono text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2 no-select">
+            <i class="fa-solid fa-equals text-slate-600 mr-1.5"></i>Balanced Equation
           </div>
-          <div id="formulaBanner" class="font-mono text-[13px] leading-relaxed text-sky-300">
+          <div id="formulaBanner" class="font-mono text-[12.5px] leading-relaxed text-sky-300">
             <div class="vl-eq" style="color:#475569;">◌ Vessel dry — add water to initiate chemistry</div>
           </div>
         </div>
 
-        <!-- pH display area -->
-        <div class="col-span-2 panel-inset p-3 flex flex-col justify-between min-h-[112px]">
-          <div class="flex items-center justify-between">
-            <span class="font-mono text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">
-              pH · pOH
+        <!-- pH display -->
+        <div class="col-span-2 rounded-lg bg-[#050811] border border-slate-800/80 p-3
+                    flex flex-col min-h-[118px]">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-mono text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase no-select">
+              <i class="fa-solid fa-droplet text-slate-600 mr-1.5"></i>pH · pOH
             </span>
-            <span class="font-mono text-[9px] font-bold tracking-[0.16em] text-slate-500">
+            <span class="font-mono text-[9px] font-bold tracking-[0.16em] text-slate-500 no-select">
               0 — 14
             </span>
           </div>
           <div id="phDisplay" class="flex-1 flex flex-col justify-end">
-            <!-- Populated by app.js: gradient track, marker, big readout, label -->
+            <!-- app.js populates: gradient track + marker + value + label -->
           </div>
         </div>
       </div>
     </div>
 
     <!-- ---------------------------------------------------------------
-         System Log terminal (bottom)
+         3. SYSTEM LOG (bottom, terminal-style, fills remaining space)
          --------------------------------------------------------------- -->
-    <div class="panel flex flex-col" style="height: 30%; min-height: 150px;">
-      <div class="flex items-center justify-between px-3 py-2 border-b border-slate-700/40">
+    <div class="flex-1 min-h-0 rounded-xl border border-slate-700/60 bg-[#050811] flex flex-col overflow-hidden shadow-lg">
+
+      <!-- Terminal header -->
+      <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800/80
+                  bg-[#080d18]/80 flex-none">
         <div class="flex items-center gap-2">
-          <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="4 17 10 11 4 5"/>
-            <line x1="12" y1="19" x2="20" y2="19"/>
-          </svg>
-          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+          <i class="fa-solid fa-terminal text-emerald-400 text-xs"></i>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase no-select">
             System Log
           </h2>
         </div>
         <div class="flex items-center gap-3">
-          <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
-            stderr · stdout
+          <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase no-select hidden sm:inline">
+            stdout · stderr
           </span>
           <span class="inline-flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
             <span class="w-1.5 h-1.5 rounded-full bg-sky-400/60"></span>
             <span class="w-1.5 h-1.5 rounded-full bg-amber-400/60"></span>
           </span>
         </div>
       </div>
+
+      <!-- Terminal scroll area -->
       <div id="logTerminal"
-           class="flex-1 overflow-y-auto scroll-lab px-3 py-2 font-mono text-[11px] leading-relaxed
-                  bg-slate-950/60">
-        <!-- Populated by app.js -->
+           class="flex-1 min-h-0 overflow-y-auto scroll-lab px-3 py-2
+                  font-mono text-xs bg-[#050811]">
+        <!-- app.js populates with timestamped .vl-logline entries -->
       </div>
     </div>
   </section>
 
   <!-- ==================================================================
-       RIGHT COLUMN — 50%
+       RIGHT COLUMN — 50% (controls + telemetry + modal overlay)
+       NOTE: `relative` here is what traps #reagentModal to this column
        ================================================================== -->
-  <section class="w-1/2 h-full flex flex-col gap-3 min-w-0">
+  <aside class="w-1/2 h-full flex flex-col gap-3 min-w-0 relative">
 
     <!-- ---------------------------------------------------------------
-         HUGE gradient "Open Reagent Library" button
+         1. HEADER — Open Reagent Library button
          --------------------------------------------------------------- -->
     <button
       id="openReagentModalBtn"
-      class="library-btn group relative w-full rounded-2xl
-             bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600
-             hover:from-sky-400 hover:via-cyan-400 hover:to-blue-500
-             text-white font-extrabold tracking-[0.16em] uppercase
-             py-5 px-6 flex items-center justify-center gap-3
-             shadow-[0_14px_40px_-8px_rgba(14,165,233,0.55)]
-             hover:shadow-[0_18px_55px_-6px_rgba(14,165,233,0.75)]
-             border border-sky-300/40
-             transition-all duration-200 active:scale-[0.985]"
-      style="font-family:'JetBrains Mono',monospace;"
+      type="button"
+      aria-haspopup="dialog"
+      aria-controls="reagentModal"
+      class="library-btn group w-full rounded-xl
+             bg-gradient-to-r from-blue-600 to-cyan-500
+             hover:from-blue-500 hover:to-cyan-400
+             text-white font-bold py-4 px-6
+             flex items-center justify-center gap-3
+             shadow-[0_12px_36px_-8px_rgba(14,165,233,0.6)]
+             hover:shadow-[0_16px_50px_-6px_rgba(14,165,233,0.8)]
+             border border-cyan-300/30
+             transition-all duration-200 active:scale-[0.985]
+             flex-none no-select"
+      style="font-family:'JetBrains Mono',monospace;letter-spacing:0.14em;"
     >
-      <svg class="w-6 h-6 drop-shadow" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5"/>
-        <path d="M14 3h7v7"/><path d="M21 3l-9 9"/>
-      </svg>
-      <span class="text-base sm:text-lg">[ + Open Reagent Library ]</span>
-      <span class="hidden sm:inline-block ml-1 px-2 py-0.5 rounded-md
-                   bg-slate-950/35 text-[10px] font-bold tracking-widest text-sky-100
+      <i class="fa-solid fa-plus text-lg drop-shadow"></i>
+      <span class="text-sm sm:text-base font-extrabold uppercase">
+        Open Reagent &amp; Element Library
+      </span>
+      <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded-md
+                   bg-slate-950/35 text-[10px] font-bold tracking-widest text-cyan-100
                    border border-white/15">
         54 REAGENTS
       </span>
     </button>
 
     <!-- ---------------------------------------------------------------
-         Apparatus Controls (middle)
+         2. APPARATUS CONTROLS
          --------------------------------------------------------------- -->
-    <div class="panel p-4 flex flex-col gap-4">
+    <div class="rounded-xl border border-slate-700/60 bg-[#0F172A]/85 p-4 flex flex-col gap-4 flex-none shadow-lg">
 
-      <!-- Section header -->
+      <!-- Header -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
-          </svg>
-          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+          <i class="fa-solid fa-fire-flame-simple text-amber-400 text-sm"></i>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase no-select">
             Apparatus Controls
           </h2>
         </div>
-        <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
+        <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase no-select">
           Bunsen · Flow · Ignition
         </span>
       </div>
 
-      <!-- Flame slider block -->
-      <div class="panel-inset p-4">
+      <!-- Flame intensity slider -->
+      <div class="rounded-lg bg-[#050811]/70 border border-slate-800/80 p-4">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
-            <span class="inline-block w-2 h-2 rounded-full bg-orange-400
-                         shadow-[0_0_10px_rgba(251,146,60,0.9)]"></span>
-            <span class="font-mono text-[11px] font-bold tracking-[0.18em] text-slate-300 uppercase">
+            <span class="inline-block w-2 h-2 rounded-full bg-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.9)]"></span>
+            <span class="font-mono text-[11px] font-bold tracking-[0.18em] text-slate-300 uppercase no-select">
               Flame Intensity
             </span>
           </div>
           <div class="flex items-baseline gap-1">
             <span id="flameValue"
-                  class="font-mono text-lg font-extrabold text-orange-300
-                         [text-shadow:0_0_14px_rgba(251,146,60,0.55)]">0</span>
+                  class="font-mono text-lg font-extrabold text-orange-300 [text-shadow:0_0_14px_rgba(251,146,60,0.55)]">0</span>
             <span class="font-mono text-xs font-bold text-slate-500">%</span>
           </div>
         </div>
@@ -498,7 +573,8 @@
           class="w-full"
         />
 
-        <div class="flex justify-between mt-2 font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
+        <!-- Scale legend -->
+        <div class="flex justify-between mt-2 font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase no-select">
           <span>Off</span>
           <span>Soft</span>
           <span>Roaring</span>
@@ -508,223 +584,250 @@
         <!-- Quick-preset chips -->
         <div class="flex flex-wrap gap-2 mt-3">
           <button type="button" data-flame="0"
-                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                  class="flame-preset px-3 py-1.5 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
                          bg-slate-800/80 border border-slate-600/60 text-slate-300
-                         hover:border-sky-400/60 hover:text-sky-200 transition">OFF</button>
+                         hover:border-sky-400/60 hover:text-sky-200 transition-all active:scale-95">Off</button>
           <button type="button" data-flame="25"
-                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                  class="flame-preset px-3 py-1.5 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
                          bg-slate-800/80 border border-slate-600/60 text-slate-300
-                         hover:border-sky-400/60 hover:text-sky-200 transition">LOW</button>
+                         hover:border-sky-400/60 hover:text-sky-200 transition-all active:scale-95">Low</button>
           <button type="button" data-flame="55"
-                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                  class="flame-preset px-3 py-1.5 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
                          bg-slate-800/80 border border-slate-600/60 text-slate-300
-                         hover:border-sky-400/60 hover:text-sky-200 transition">MEDIUM</button>
+                         hover:border-sky-400/60 hover:text-sky-200 transition-all active:scale-95">Med</button>
           <button type="button" data-flame="85"
-                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                  class="flame-preset px-3 py-1.5 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
                          bg-slate-800/80 border border-slate-600/60 text-slate-300
-                         hover:border-amber-400/60 hover:text-amber-200 transition">HIGH</button>
+                         hover:border-amber-400/60 hover:text-amber-200 transition-all active:scale-95">High</button>
           <button type="button" data-flame="100"
-                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                  class="flame-preset px-3 py-1.5 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
                          bg-slate-800/80 border border-slate-600/60 text-slate-300
-                         hover:border-rose-400/60 hover:text-rose-200 transition">MAX</button>
+                         hover:border-rose-400/60 hover:text-rose-200 transition-all active:scale-95">Max</button>
         </div>
       </div>
 
-      <!-- Action row: Ignite H₂ · Reset Vessel · Mute audio -->
-      <div class="grid grid-cols-3 gap-2.5">
-        <button id="igniteBtn" type="button"
-                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.16em] uppercase
-                       bg-amber-500/15 border border-amber-400/40 text-amber-200
-                       hover:bg-amber-500/25 hover:border-amber-300/70
-                       active:scale-[0.97] transition-all">
-          ⚡ Ignite H₂
-        </button>
-        <button id="resetVesselBtn" type="button"
-                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.16em] uppercase
-                       bg-rose-500/15 border border-rose-400/40 text-rose-200
+      <!-- Action buttons: Clear Vessel · Refill · Stir · Flush -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <button id="clearVesselBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.14em] uppercase
+                       bg-rose-500/12 border border-rose-400/40 text-rose-200
                        hover:bg-rose-500/25 hover:border-rose-300/70
                        active:scale-[0.97] transition-all">
-          ⟲ Reset Vessel
+          <i class="fa-solid fa-trash-can mr-1"></i> Clear
         </button>
-        <button id="muteBtn" type="button"
-                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.16em] uppercase
-                       bg-sky-500/15 border border-sky-400/40 text-sky-200
+        <button id="refillBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.14em] uppercase
+                       bg-sky-500/12 border border-sky-400/40 text-sky-200
                        hover:bg-sky-500/25 hover:border-sky-300/70
                        active:scale-[0.97] transition-all">
-          🔊 Audio
+          <i class="fa-solid fa-fill-drip mr-1"></i> Refill
+        </button>
+        <button id="stirBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.14em] uppercase
+                       bg-violet-500/12 border border-violet-400/40 text-violet-200
+                       hover:bg-violet-500/25 hover:border-violet-300/70
+                       active:scale-[0.97] transition-all">
+          <i class="fa-solid fa-rotate mr-1"></i> Stir
+        </button>
+        <button id="flushBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.14em] uppercase
+                       bg-amber-500/12 border border-amber-400/40 text-amber-200
+                       hover:bg-amber-500/25 hover:border-amber-300/70
+                       active:scale-[0.97] transition-all">
+          <i class="fa-solid fa-water mr-1"></i> Flush
         </button>
       </div>
 
-      <!-- Quick water dosing (also mirrored inside modal) -->
-      <div class="panel-inset p-3">
-        <div class="flex items-center justify-between mb-2">
-          <span class="font-mono text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">
-            Solvent · H₂O
-          </span>
-          <span class="font-mono text-[9px] tracking-[0.14em] text-slate-500 uppercase">
-            required for reaction
-          </span>
-        </div>
-        <div class="grid grid-cols-4 gap-2">
-          <button type="button" data-water="50"
-                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
-                         bg-slate-800/80 border border-slate-600/60 text-sky-200
-                         hover:border-sky-400/60 hover:bg-slate-700/80 transition">+50 mL</button>
-          <button type="button" data-water="100"
-                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
-                         bg-slate-800/80 border border-slate-600/60 text-sky-200
-                         hover:border-sky-400/60 hover:bg-slate-700/80 transition">+100 mL</button>
-          <button type="button" data-water="250"
-                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
-                         bg-slate-800/80 border border-slate-600/60 text-sky-200
-                         hover:border-sky-400/60 hover:bg-slate-700/80 transition">+250 mL</button>
-          <button type="button" data-water="-50"
-                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
-                         bg-slate-800/80 border border-slate-600/60 text-rose-200
-                         hover:border-rose-400/60 hover:bg-slate-700/80 transition">−50 mL</button>
-        </div>
+      <!-- Secondary row: Ignite · Reset · Mute -->
+      <div class="grid grid-cols-3 gap-2.5">
+        <button id="igniteBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.14em] uppercase
+                       bg-gradient-to-r from-amber-600/30 to-orange-600/30
+                       border border-amber-400/50 text-amber-100
+                       hover:from-amber-500/40 hover:to-orange-500/40
+                       active:scale-[0.97] transition-all">
+          <i class="fa-solid fa-bolt mr-1"></i> Ignite H₂
+        </button>
+        <button id="resetVesselBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.14em] uppercase
+                       bg-slate-800/70 border border-slate-600/60 text-slate-200
+                       hover:border-slate-400/80 hover:text-white
+                       active:scale-[0.97] transition-all">
+          <i class="fa-solid fa-rotate-left mr-1"></i> Reset
+        </button>
+        <button id="muteBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.14em] uppercase
+                       bg-emerald-500/12 border border-emerald-400/40 text-emerald-200
+                       hover:bg-emerald-500/25 hover:border-emerald-300/70
+                       active:scale-[0.97] transition-all">
+          <i class="fa-solid fa-volume-high mr-1"></i> Audio
+        </button>
       </div>
     </div>
 
     <!-- ---------------------------------------------------------------
-         Thermodynamics Telemetry grid (bottom)
+         3. THERMODYNAMICS TELEMETRY
          --------------------------------------------------------------- -->
-    <div class="panel p-4 flex-1 min-h-0 flex flex-col">
+    <div class="flex-1 min-h-0 rounded-xl border border-slate-700/60 bg-[#0F172A]/85 p-4
+                flex flex-col overflow-hidden shadow-lg">
 
-      <div class="flex items-center justify-between mb-3">
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-3 flex-none">
         <div class="flex items-center gap-2">
-          <svg class="w-3.5 h-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 3v18h18"/>
-            <path d="M7 15l4-4 3 3 6-7"/>
-          </svg>
-          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+          <i class="fa-solid fa-chart-line text-cyan-400 text-sm"></i>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase no-select">
             Thermodynamics · Telemetry
           </h2>
         </div>
-        <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
+        <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase no-select">
           live · si units
         </span>
       </div>
 
-      <div class="grid grid-cols-2 gap-x-5 gap-y-1 flex-1 overflow-y-auto scroll-lab pr-1">
+      <!-- Telemetry grid -->
+      <div class="grid grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto scroll-lab pr-1">
 
-        <!-- Column 1 -->
-        <div class="flex flex-col">
-          <div class="tele-row">
-            <span class="tele-key">Mass</span>
-            <span class="tele-val" id="telemetryMass">0.00 g</span>
-          </div>
-          <div class="tele-row">
-            <span class="tele-key">Volume</span>
-            <span class="tele-val" id="telemetryVolume">0.0 mL</span>
-          </div>
-          <div class="tele-row">
-            <span class="tele-key">Molarity</span>
-            <span class="tele-val" id="telemetryMolarity">0.0000 M</span>
-          </div>
+        <!-- Mass -->
+        <div class="tele-cell">
+          <span class="tele-key">Mass</span>
+          <span class="tele-val" id="massDisplay">0.00 g</span>
         </div>
 
-        <!-- Column 2 -->
-        <div class="flex flex-col">
-          <div class="tele-row">
-            <span class="tele-key">Temperature</span>
-            <span class="tele-val" id="telemetryTemp">25.0 °C</span>
-          </div>
-          <div class="tele-row">
-            <span class="tele-key">Species</span>
-            <span class="tele-val" id="telemetrySpecies">0</span>
-          </div>
-          <div class="tele-row">
-            <span class="tele-key">Sim Time</span>
-            <span class="tele-val" id="telemetryTime">0.0 s</span>
-          </div>
+        <!-- Volume -->
+        <div class="tele-cell">
+          <span class="tele-key">Volume</span>
+          <span class="tele-val" id="volumeDisplay">0.0 mL</span>
+        </div>
+
+        <!-- Molarity -->
+        <div class="tele-cell">
+          <span class="tele-key">Molarity</span>
+          <span class="tele-val" id="molarityDisplay">0.0000 M</span>
+        </div>
+
+        <!-- Temperature -->
+        <div class="tele-cell">
+          <span class="tele-key">Temperature</span>
+          <span class="tele-val" id="tempDisplay">25.0 °C</span>
+        </div>
+
+        <!-- Species count (bonus) -->
+        <div class="tele-cell">
+          <span class="tele-key">Species</span>
+          <span class="tele-val" id="speciesDisplay">0</span>
+        </div>
+
+        <!-- Sim time (bonus) -->
+        <div class="tele-cell">
+          <span class="tele-key">Sim Time</span>
+          <span class="tele-val" id="timeDisplay">0.0 s</span>
         </div>
       </div>
 
       <!-- Footer chips -->
       <div class="mt-3 pt-3 border-t border-slate-700/40 flex flex-wrap items-center gap-2
-                  font-mono text-[9px] tracking-[0.14em] uppercase text-slate-500">
+                  font-mono text-[9px] tracking-[0.14em] uppercase text-slate-500 flex-none no-select">
         <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">q = mcΔT</span>
         <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">Tb = 100.00 °C</span>
         <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">Kw(25 °C) = 1.00e-14</span>
         <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">ΔfH°₂₉₈ · kJ/mol</span>
       </div>
     </div>
-  </section>
 
-  <!-- ==================================================================
-       REAGENT MODAL — hidden absolute overlay
-       ================================================================== -->
-  <div
-    id="reagentModal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="reagentModalTitle"
-    aria-hidden="true"
-    class="absolute inset-0 z-50 items-center justify-center
-           bg-slate-950/80 backdrop-blur-md p-3"
-    style="display:none;"
-  >
-    <!-- Panel -->
-    <div class="panel w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
-
-      <!-- Modal header -->
-      <div class="flex items-center justify-between px-5 py-4
-                  border-b border-slate-700/50
-                  bg-gradient-to-r from-sky-950/60 via-slate-900/60 to-slate-950/60">
+    <!-- ===============================================================
+         4. REAGENT MODAL — absolutely positioned INSIDE the right column
+            Because <aside> is `relative`, this overlay is trapped here.
+            The left column (canvas + logs) stays 100% visible, undimmed.
+         =============================================================== -->
+    <div
+      id="reagentModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reagentModalTitle"
+      aria-hidden="true"
+      class="absolute inset-0 z-50 hidden bg-[#0F172A] border border-slate-700 rounded-xl flex flex-col overflow-hidden
+             shadow-[0_20px_70px_-10px_rgba(0,0,0,0.95)]"
+      style="display: none;"
+    >
+      <!-- ---------- Sticky Header ---------- -->
+      <header class="flex-none flex items-center justify-between px-5 py-4
+                     border-b border-slate-700/60
+                     bg-gradient-to-r from-slate-900 via-[#0F172A] to-slate-900">
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-lg bg-sky-500/15 border border-sky-400/40
-                      flex items-center justify-center">
-            <svg class="w-5 h-5 text-sky-300" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5"/>
-              <path d="M14 3h7v7"/><path d="M21 3l-9 9"/>
-            </svg>
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500
+                      flex items-center justify-center shadow-lg">
+            <i class="fa-solid fa-flask text-white text-lg"></i>
           </div>
           <div>
             <h2 id="reagentModalTitle"
-                class="font-mono text-sm font-extrabold tracking-[0.16em] uppercase text-slate-100">
-              Reagent Library
+                class="font-mono text-sm font-extrabold tracking-[0.16em] uppercase text-white no-select">
+              Reagent &amp; Element Library
             </h2>
-            <p class="font-mono text-[10px] tracking-[0.14em] text-slate-500 uppercase mt-0.5">
+            <p class="font-mono text-[10px] tracking-[0.14em] text-slate-500 uppercase mt-0.5 no-select">
               54 reagents · 17 categories · auto-unit dosing
             </p>
           </div>
         </div>
 
         <button
-          id="closeReagentModalBtn"
+          id="closeModalBtn"
           type="button"
-          aria-label="Close reagent modal"
-          class="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-600/60
-                 hover:border-rose-400/60 hover:text-rose-200
-                 text-slate-300 font-mono text-base font-bold
-                 flex items-center justify-center transition-all"
-        >✕</button>
+          aria-label="Close reagent library"
+          class="w-10 h-10 rounded-lg bg-slate-800/90 border border-slate-700
+                 hover:bg-rose-600/80 hover:border-rose-500
+                 text-slate-300 hover:text-white
+                 flex items-center justify-center
+                 transition-all duration-150 active:scale-90"
+        >
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </header>
+
+      <!-- ---------- Scrollable Body (populated entirely by app.js) ---------- -->
+      <div data-vl-body
+           class="flex-1 min-h-0 overflow-y-auto scroll-lab p-4">
+        <!-- app.js injects: search input + category select + reagent grid
+             + amount/unit row + water controls + hint chip -->
       </div>
 
-      <!-- Modal body: populated by app.js -->
-      <div data-vl-body class="flex-1 overflow-y-auto scroll-lab px-5 py-4">
-        <!-- app.js builds: search row, category select, reagent grid, amount+unit, water controls -->
-      </div>
-
-      <!-- Modal footer -->
-      <div class="px-5 py-3 border-t border-slate-700/50
-                  bg-slate-950/70
-                  flex flex-wrap items-center justify-between gap-2
-                  font-mono text-[10px] tracking-[0.14em] uppercase text-slate-500">
-        <span>ESC to close · M to mute · dry vessel protocol armed</span>
-        <span class="flex items-center gap-2">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>engine ready</span>
+      <!-- ---------- Sticky Footer ---------- -->
+      <footer class="flex-none px-5 py-3 border-t border-slate-700/60 bg-slate-950/80
+                     flex flex-wrap items-center justify-between gap-2
+                     font-mono text-[10px] tracking-[0.14em] uppercase text-slate-500 no-select">
+        <span>
+          <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400">ESC</kbd>
+          to close ·
+          <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400">M</kbd>
+          to mute
         </span>
-      </div>
+        <span class="flex items-center gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
+          <span>Engine Ready</span>
+        </span>
+      </footer>
     </div>
+
+  </aside>
+
+  <!-- ==================================================================
+       HIDDEN BRIDGE SPANS
+       These carry the IDs that `app.js` (step 4) expects. A small mirror
+       loop below copies their text into the visible `*Display` elements.
+       This keeps the visible IDs semantic while remaining compatible
+       with the existing telemetry engine.
+       ================================================================== -->
+  <div style="display:none;" aria-hidden="true">
+    <span id="telemetryMass"></span>
+    <span id="telemetryVolume"></span>
+    <span id="telemetryMolarity"></span>
+    <span id="telemetryTemp"></span>
+    <span id="telemetrySpecies"></span>
+    <span id="telemetryTime"></span>
+    <span id="telemetryPanel" style="display:none;"></span>
   </div>
 
   <!-- ==================================================================
-       SCRIPT BOOTSTRAP — sequential, bottom of body
+       SCRIPTS — sequential, bottom of body
        ================================================================== -->
   <script src="chemicals.js"></script>
   <script src="engine.js"></script>
@@ -732,66 +835,56 @@
   <script src="app.js"></script>
 
   <!-- ==================================================================
-       Small glue script: preset chips + modal close, delegating to app.js
+       GLUE SCRIPT — modal close, apparatus buttons, telemetry mirror,
+                    flame presets, and left-column-only visibility guard
        ================================================================== -->
   <script>
     (function () {
       'use strict';
 
       const $ = (id) => document.getElementById(id);
+      const ENGINE = window.ChemistryEngine;
+      const APP    = window.VirtuaLabApp;
+      const RENDER = window.CanvasRenderer;
 
-      /* ---- Flame presets ---- */
-      document.querySelectorAll('.flame-preset').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const v = btn.getAttribute('data-flame');
-          const slider = $('flameSlider');
-          if (!slider) return;
-          slider.value = v;
-          slider.dispatchEvent(new Event('input', { bubbles: true }));
-          slider.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-      });
+      /* --------------------------------------------------------------
+         A. Telemetry Mirror — copies hidden app.js spans into visible
+            `*Display` elements at ~20 Hz via requestAnimationFrame.
+         -------------------------------------------------------------- */
+      const MIRROR_PAIRS = [
+        ['telemetryMass',     'massDisplay'],
+        ['telemetryVolume',   'volumeDisplay'],
+        ['telemetryMolarity', 'molarityDisplay'],
+        ['telemetryTemp',     'tempDisplay'],
+        ['telemetrySpecies',  'speciesDisplay'],
+        ['telemetryTime',     'timeDisplay'],
+      ];
 
-      /* ---- Water presets (delegate to engine + audio) ---- */
-      document.querySelectorAll('.water-preset').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const delta = parseFloat(btn.getAttribute('data-water')) || 0;
-          const ENG = window.ChemistryEngine;
-          const APP = window.VirtuaLabApp;
-          if (!ENG) return;
-          APP?.audio?.init?.();
-          APP?.audio?.resume?.();
-          if (delta > 0) {
-            ENG.addWater(delta);
-            APP?.audio?.pour?.();
-          } else if (delta < 0) {
-            ENG.removeWater(-delta);
+      (function mirrorLoop() {
+        for (let i = 0; i < MIRROR_PAIRS.length; i++) {
+          const src = $(MIRROR_PAIRS[i][0]);
+          const dst = $(MIRROR_PAIRS[i][1]);
+          if (src && dst && dst.textContent !== src.textContent) {
+            dst.textContent = src.textContent;
           }
-        });
-      });
-
-      /* ---- Ignite H₂ ---- */
-      $('igniteBtn')?.addEventListener('click', () => {
-        const ENG = window.ChemistryEngine;
-        const APP = window.VirtuaLabApp;
-        if (!ENG) return;
-        APP?.audio?.init?.();
-        APP?.audio?.resume?.();
-        const res = ENG.igniteGas();
-        if (res && res.ignitedAny) {
-          APP?.audio?.thud?.(1.2);
-          window.CanvasRenderer?.triggerExplosion?.(0.85);
-        } else {
-          APP?.audio?.click?.();
         }
+        requestAnimationFrame(mirrorLoop);
+      })();
+
+      /* --------------------------------------------------------------
+         B. Modal Close
+         -------------------------------------------------------------- */
+      $('closeModalBtn')?.addEventListener('click', () => {
+        APP?.closeModal?.();
       });
 
-      /* ---- Reset vessel (duplicate of in-modal button) ---- */
-      $('resetVesselBtn')?.addEventListener('click', () => {
-        const ENG = window.ChemistryEngine;
-        const APP = window.VirtuaLabApp;
-        if (!ENG) return;
-        ENG.reset();
+      /* --------------------------------------------------------------
+         C. Apparatus Action Buttons
+            Clear Vessel · Refill · Stir · Flush
+         -------------------------------------------------------------- */
+      $('clearVesselBtn')?.addEventListener('click', () => {
+        if (!ENGINE) return;
+        ENGINE.reset();
         APP?.audio?.fizzStop?.();
         APP?.audio?.click?.();
         const log = $('logTerminal'); if (log) log.innerHTML = '';
@@ -808,29 +901,89 @@
         }
       });
 
-      /* ---- Mute (mirror of in-modal button) ---- */
-      $('muteBtn')?.addEventListener('click', () => {
-        const APP = window.VirtuaLabApp;
-        if (!APP || !APP.audio) return;
-        APP.audio.init();
-        APP.audio.resume();
-        APP.audio.setEnabled(!APP.audio.enabled);
-        if (!APP.audio.enabled) APP.audio.fizzStop();
-        const btn = $('muteBtn');
-        if (btn) btn.textContent = APP.audio.enabled ? '🔊 Audio' : '🔇 Muted';
+      $('refillBtn')?.addEventListener('click', () => {
+        if (!ENGINE) return;
+        APP?.audio?.init?.();
+        APP?.audio?.resume?.();
+        ENGINE.addWater(250);
+        APP?.audio?.pour?.();
       });
 
-      /* ---- Modal close button ---- */
-      $('closeReagentModalBtn')?.addEventListener('click', () => {
-        window.VirtuaLabApp?.closeModal?.();
+      $('stirBtn')?.addEventListener('click', () => {
+        if (!ENGINE) return;
+        const v = ENGINE.vessel;
+        if (!v) return;
+        v.stirring = !v.stirring;
+        const btn = $('stirBtn');
+        if (btn) {
+          btn.classList.toggle('ring-2', v.stirring);
+          btn.classList.toggle('ring-violet-400/60', v.stirring);
+        }
+        APP?.audio?.click?.();
       });
 
-      /* ---- Safety: keep body from scroll-bouncing on iOS ---- */
+      $('flushBtn')?.addEventListener('click', () => {
+        if (!ENGINE) return;
+        const v = ENGINE.vessel;
+        if (!v) return;
+        const total = v.waterVolume || 0;
+        if (total > 0) {
+          ENGINE.removeWater(total);
+          APP?.audio?.hiss?.(0.4, 0.16);
+        }
+      });
+
+      /* --------------------------------------------------------------
+         D. Flame Presets
+         -------------------------------------------------------------- */
+      document.querySelectorAll('.flame-preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const v = btn.getAttribute('data-flame');
+          const slider = $('flameSlider');
+          if (!slider) return;
+          slider.value = v;
+          slider.dispatchEvent(new Event('input',  { bubbles: true }));
+          slider.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      });
+
+      /* --------------------------------------------------------------
+         E. Safety: prevent iOS/Android scroll-bounce on non-scrollables
+         -------------------------------------------------------------- */
       document.addEventListener('touchmove', (e) => {
-        if (e.target && e.target.closest && e.target.closest('.scroll-lab')) return;
-        if (e.target && e.target.tagName === 'INPUT') return;
+        const t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest('.scroll-lab')) return;
+        if (t.tagName === 'INPUT') return;
         e.preventDefault();
       }, { passive: false });
+
+      /* --------------------------------------------------------------
+         F. Hard guarantee: the reagent modal NEVER touches the left column.
+            We enforce containment by ensuring #reagentModal's offsetParent
+            is the right column.
+         -------------------------------------------------------------- */
+      const modal = $('reagentModal');
+      const rightCol = modal?.parentElement;
+      if (modal && rightCol) {
+        rightCol.style.position = 'relative';
+        /* Defensive: if anything (CSS framework, extension) tries to
+           reposition it to the body, snap it back. */
+        if (modal.parentElement !== rightCol) {
+          rightCol.appendChild(modal);
+        }
+      }
+
+      /* --------------------------------------------------------------
+         G. Auto-close modal if a UI resize would break the layout.
+         -------------------------------------------------------------- */
+      window.addEventListener('resize', () => {
+        const isOpen = modal && modal.style.display === 'flex';
+        if (isOpen && modal.parentElement !== rightCol) {
+          rightCol?.appendChild(modal);
+        }
+      });
+
     })();
   </script>
 
