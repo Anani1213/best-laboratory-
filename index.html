@@ -1,1092 +1,838 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>VirtuaLab Pro — Virtual Chemistry Laboratory</title>
-<meta name="description" content="University-grade virtual chemistry laboratory: 100+ reagents, real thermodynamics, logarithmic pH telemetry, canvas particle physics and procedural audio." />
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-  html,body{height:100%;}
-  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
-  ::-webkit-scrollbar{width:8px;height:8px}
-  ::-webkit-scrollbar-track{background:#0f172a}
-  ::-webkit-scrollbar-thumb{background:#334155;border-radius:8px}
-  input[type=range]{-webkit-appearance:none;appearance:none;height:8px;border-radius:9999px;background:#1e293b;outline:none}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:9999px;background:#38bdf8;border:2px solid #0f172a;cursor:pointer}
-  input[type=range]:disabled::-webkit-slider-thumb{background:#64748b;cursor:not-allowed}
-  .qty{background:#1e293b;color:#f1f5f9;font-weight:700}
-  .fade-in{animation:fi .18s ease-out}
-  @keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#020617" />
+  <title>VirtuaLab Pro — University-Grade Virtual Chemistry Lab</title>
+
+  <!-- ==================================================================
+       Tailwind CSS via CDN
+       ================================================================== -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['"JetBrains Mono"', '"Fira Code"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+            sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+          },
+          colors: {
+            lab: {
+              950: '#020617',
+              900: '#0a1120',
+              800: '#0f172a',
+              700: '#1e293b',
+              600: '#334155',
+              accent: '#38bdf8',
+              glow: '#7dd3fc',
+              danger: '#ef4444',
+              warn: '#f59e0b',
+              good: '#22c55e',
+            },
+          },
+          keyframes: {
+            pulseGlow: {
+              '0%, 100%': { boxShadow: '0 0 0 0 rgba(56,189,248,0.35)' },
+              '50%': { boxShadow: '0 0 0 12px rgba(56,189,248,0)' },
+            },
+            scan: {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(100%)' },
+            },
+          },
+          animation: {
+            pulseGlow: 'pulseGlow 2.6s ease-in-out infinite',
+            scan: 'scan 6s linear infinite',
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- ==================================================================
+       Fonts
+       ================================================================== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- ==================================================================
+       Global styles
+       ================================================================== -->
+  <style>
+    html, body { height: 100%; }
+    body { font-family: 'Inter', system-ui, sans-serif; }
+
+    /* ---- Custom scrollbars ---- */
+    .scroll-lab::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scroll-lab::-webkit-scrollbar-track { background: rgba(15,23,42,0.6); border-radius: 4px; }
+    .scroll-lab::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #334155, #1e293b);
+      border-radius: 4px; border: 1px solid rgba(100,150,200,0.15);
+    }
+    .scroll-lab::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, #475569, #334155);
+    }
+    .scroll-lab { scrollbar-width: thin; scrollbar-color: #334155 rgba(15,23,42,0.4); }
+
+    /* ---- Panel surface ---- */
+    .panel {
+      background:
+        linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.88));
+      border: 1px solid rgba(100,150,200,0.14);
+      border-radius: 14px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 8px 30px rgba(0,0,0,0.55);
+      backdrop-filter: blur(6px);
+    }
+    .panel-inset {
+      background: rgba(2,6,23,0.55);
+      border: 1px solid rgba(100,150,200,0.10);
+      border-radius: 10px;
+    }
+
+    /* ---- Subtle scanline overlay on canvas frame ---- */
+    .scanlines::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255,255,255,0.012) 0px,
+        rgba(255,255,255,0.012) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      pointer-events: none;
+      border-radius: inherit;
+    }
+
+    /* ---- Canvas sizing ---- */
+    #labCanvas { display: block; width: 100%; height: 100%; }
+
+    /* ---- Flame slider ---- */
+    #flameSlider {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 10px;
+      background: linear-gradient(90deg,
+        #0ea5e9 0%,
+        #22c55e 28%,
+        #eab308 55%,
+        #f97316 78%,
+        #ef4444 100%);
+      border-radius: 999px;
+      outline: none;
+      cursor: pointer;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.7);
+    }
+    #flameSlider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 55%, #64748b);
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 0 1px #38bdf8, 0 4px 14px rgba(56,189,248,0.45);
+      cursor: grab;
+      transition: transform 0.12s ease;
+    }
+    #flameSlider::-webkit-slider-thumb:active { transform: scale(1.14); cursor: grabbing; }
+    #flameSlider::-moz-range-thumb {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 55%, #64748b);
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 0 1px #38bdf8, 0 4px 14px rgba(56,189,248,0.45);
+      cursor: grab;
+    }
+
+    /* ---- pH display host: gradient bar built by app.js ---- */
+    #phDisplay {
+      --vl-ph-color: #22c55e;
+      min-height: 62px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      justify-content: center;
+    }
+    #phDisplay .vl-ph-track {
+      position: relative;
+      height: 14px;
+      border-radius: 999px;
+      overflow: visible;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.75), 0 0 0 1px rgba(100,150,200,0.2);
+    }
+    #phDisplay .vl-ph-marker {
+      position: absolute;
+      top: -4px;
+      width: 4px;
+      height: 22px;
+      border-radius: 2px;
+      background: #ffffff;
+      transform: translateX(-2px);
+      transition: left 0.18s cubic-bezier(0.4,0,0.2,1);
+      box-shadow: 0 0 12px rgba(255,255,255,0.9);
+    }
+    #phDisplay .vl-ph-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 22px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      color: var(--vl-ph-color);
+      transition: color 0.22s ease;
+      text-shadow: 0 0 18px color-mix(in srgb, var(--vl-ph-color) 55%, transparent);
+    }
+    #phDisplay .vl-ph-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    /* ---- Formula banner rows (from app.js) ---- */
+    #formulaBanner .vl-eq {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.6;
+      color: #7dd3fc;
+      padding: 3px 0;
+      animation: fadeSlide 0.35s ease;
+    }
+    #formulaBanner .vl-eq .dh {
+      font-size: 10px;
+      color: #fbbf24;
+      margin-left: 8px;
+      opacity: 0.85;
+    }
+    #formulaBanner .vl-eq.fresh {
+      color: #ffffff;
+      text-shadow: 0 0 16px rgba(125,211,252,0.75);
+    }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---- Log terminal rows (from app.js) ---- */
+    #logTerminal .vl-logline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.55;
+      padding: 1px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-bottom: 1px solid rgba(148,163,184,0.05);
+    }
+    #logTerminal .vl-logline .ts {
+      color: #475569;
+      margin-right: 8px;
+      user-select: none;
+    }
+
+    /* ---- Telemetry rows ---- */
+    .tele-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 5px 0;
+      border-bottom: 1px dashed rgba(148,163,184,0.10);
+    }
+    .tele-row:last-child { border-bottom: none; }
+    .tele-key {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .tele-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: #7dd3fc;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---- Reagent modal ---- */
+    #reagentModal { display: none; }
+    #reagentModal.open { display: flex; }
+
+    /* ---- Big library button pulse ---- */
+    .library-btn {
+      position: relative;
+      overflow: hidden;
+    }
+    .library-btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.18) 50%, transparent 70%);
+      transform: translateX(-100%);
+      transition: transform 0.7s ease;
+    }
+    .library-btn:hover::after { transform: translateX(100%); }
+
+    /* ---- Utility ---- */
+    .no-select { user-select: none; -webkit-user-select: none; }
+
+    /* ---- Prevent mobile zoom quirks ---- */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+  </style>
 </head>
-<body class="h-screen max-h-screen overflow-hidden bg-slate-950 text-slate-200">
 
-<div class="h-screen max-h-screen overflow-hidden p-2 gap-3 bg-slate-950 flex flex-col lg:flex-row">
+<body class="h-screen max-h-screen overflow-hidden bg-slate-950 flex flex-row p-2 gap-3 text-slate-100">
 
-  <!-- ================= LEFT COLUMN ================= -->
-  <section class="flex flex-col gap-2 w-full lg:w-1/2 min-h-0">
+  <!-- ==================================================================
+       LEFT COLUMN — 50%
+       ================================================================== -->
+  <section class="w-1/2 h-full flex flex-col gap-3 min-w-0">
 
-    <!-- Beaker canvas viewport -->
-    <div class="h-[260px] flex-none relative bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
-      <canvas id="lab-canvas" class="absolute inset-0 w-full h-full"></canvas>
-      <div class="absolute top-2 left-3 text-[10px] uppercase tracking-[0.2em] text-slate-500">VirtuaLab Pro · Bench Cam</div>
-      <div id="hud-temp" class="absolute top-2 right-3 mono text-xs text-amber-300">25.0 °C</div>
-      <div id="hud-state" class="absolute bottom-2 left-3 mono text-[11px] text-slate-400">DRY VESSEL — no liquid phase</div>
-    </div>
-
-    <!-- Live reaction & physical state banner -->
-    <div class="flex-none rounded-xl bg-slate-900 border border-slate-800 p-3">
-      <div class="flex items-center justify-between mb-1">
-        <span class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Live balanced reaction</span>
-        <span id="reaction-tag" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">idle</span>
-      </div>
-      <div id="equation" class="mono text-sm text-sky-300 break-words min-h-[20px]">— awaiting reagents —</div>
-      <div id="species" class="mt-2 flex flex-wrap gap-1"></div>
-      <div class="mt-3">
-        <div class="flex items-center justify-between text-[11px] text-slate-400 mono">
-          <span>pH meter (read-only telemetry)</span>
-          <span id="ph-value" class="text-slate-100 font-bold">7.00 · neutral</span>
+    <!-- ---------------------------------------------------------------
+         Canvas wrapper (top)
+         --------------------------------------------------------------- -->
+    <div class="relative panel scanlines overflow-hidden flex-1 min-h-0">
+      <!-- Header strip -->
+      <div class="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-3 py-2
+                  bg-gradient-to-b from-slate-950/95 to-transparent pointer-events-none">
+        <div class="flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-400
+                       shadow-[0_0_10px_rgba(52,211,153,0.9)]"></span>
+          <span class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400">
+            LIVE · VESSEL VIEWPORT
+          </span>
         </div>
-        <input id="ph-slider" type="range" min="0" max="14" step="0.01" value="7" disabled class="w-full mt-1" />
-        <div class="h-2 rounded-full mt-1" style="background:linear-gradient(90deg,#dc2626,#f97316,#facc15,#22c55e,#0ea5e9,#4f46e5,#7e22ce)"></div>
-        <div class="flex justify-between text-[9px] text-slate-500 mono mt-0.5"><span>0 acid</span><span>7</span><span>14 base</span></div>
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-[10px] font-bold tracking-[0.18em] text-slate-500">
+            500 mL PYREX
+          </span>
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+        </div>
+      </div>
+
+      <!-- The canvas -->
+      <canvas id="labCanvas" class="w-full h-full"></canvas>
+
+      <!-- Bottom-right hint -->
+      <div class="absolute bottom-2 right-3 z-10 pointer-events-none">
+        <span class="font-mono text-[9px] tracking-[0.2em] text-slate-500/70">
+          VIRTUALAB PRO · ENGINE v1.0
+        </span>
       </div>
     </div>
 
-    <!-- Reaction log terminal -->
-    <div class="flex-1 min-h-0 rounded-xl bg-black border border-slate-800 p-2 flex flex-col">
-      <div class="flex-none text-[10px] uppercase tracking-[0.2em] text-emerald-500 mb-1">Reaction log terminal</div>
-      <div id="log" class="flex-1 min-h-0 overflow-y-auto mono text-[11px] leading-relaxed text-emerald-300 pr-1"></div>
+    <!-- ---------------------------------------------------------------
+         Reaction State / Balanced Equation / pH bar (middle)
+         --------------------------------------------------------------- -->
+    <div class="panel p-3 flex flex-col gap-3">
+
+      <!-- Section header -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4"/>
+            <path d="M9 3v18"/><path d="M15 3v18"/>
+          </svg>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+            Reaction State
+          </h2>
+        </div>
+        <span class="font-mono text-[9px] tracking-[0.18em] text-slate-500 uppercase">
+          Stoichiometry · ΔH°₂₉₈
+        </span>
+      </div>
+
+      <!-- Two-column layout: equation banner (left) + pH display (right) -->
+      <div class="grid grid-cols-5 gap-3">
+
+        <!-- Balanced equation area -->
+        <div class="col-span-3 panel-inset p-3 min-h-[112px] max-h-[148px] overflow-y-auto scroll-lab">
+          <div class="font-mono text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-1.5">
+            Balanced Equation
+          </div>
+          <div id="formulaBanner" class="font-mono text-[13px] leading-relaxed text-sky-300">
+            <div class="vl-eq" style="color:#475569;">◌ Vessel dry — add water to initiate chemistry</div>
+          </div>
+        </div>
+
+        <!-- pH display area -->
+        <div class="col-span-2 panel-inset p-3 flex flex-col justify-between min-h-[112px]">
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">
+              pH · pOH
+            </span>
+            <span class="font-mono text-[9px] font-bold tracking-[0.16em] text-slate-500">
+              0 — 14
+            </span>
+          </div>
+          <div id="phDisplay" class="flex-1 flex flex-col justify-end">
+            <!-- Populated by app.js: gradient track, marker, big readout, label -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------
+         System Log terminal (bottom)
+         --------------------------------------------------------------- -->
+    <div class="panel flex flex-col" style="height: 30%; min-height: 150px;">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-slate-700/40">
+        <div class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"/>
+            <line x1="12" y1="19" x2="20" y2="19"/>
+          </svg>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+            System Log
+          </h2>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
+            stderr · stdout
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-sky-400/60"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400/60"></span>
+          </span>
+        </div>
+      </div>
+      <div id="logTerminal"
+           class="flex-1 overflow-y-auto scroll-lab px-3 py-2 font-mono text-[11px] leading-relaxed
+                  bg-slate-950/60">
+        <!-- Populated by app.js -->
+      </div>
     </div>
   </section>
 
-  <!-- ================= RIGHT COLUMN ================= -->
-  <section class="flex flex-col gap-2 w-full lg:w-1/2 min-h-0 overflow-y-auto">
+  <!-- ==================================================================
+       RIGHT COLUMN — 50%
+       ================================================================== -->
+  <section class="w-1/2 h-full flex flex-col gap-3 min-w-0">
 
-    <button id="open-library" class="flex-none w-full rounded-xl bg-sky-600 hover:bg-sky-500 transition text-white font-bold py-3 tracking-wide">
-      [ ➕ OPEN REAGENT &amp; ELEMENT LIBRARY ]
+    <!-- ---------------------------------------------------------------
+         HUGE gradient "Open Reagent Library" button
+         --------------------------------------------------------------- -->
+    <button
+      id="openReagentModalBtn"
+      class="library-btn group relative w-full rounded-2xl
+             bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600
+             hover:from-sky-400 hover:via-cyan-400 hover:to-blue-500
+             text-white font-extrabold tracking-[0.16em] uppercase
+             py-5 px-6 flex items-center justify-center gap-3
+             shadow-[0_14px_40px_-8px_rgba(14,165,233,0.55)]
+             hover:shadow-[0_18px_55px_-6px_rgba(14,165,233,0.75)]
+             border border-sky-300/40
+             transition-all duration-200 active:scale-[0.985]"
+      style="font-family:'JetBrains Mono',monospace;"
+    >
+      <svg class="w-6 h-6 drop-shadow" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5"/>
+        <path d="M14 3h7v7"/><path d="M21 3l-9 9"/>
+      </svg>
+      <span class="text-base sm:text-lg">[ + Open Reagent Library ]</span>
+      <span class="hidden sm:inline-block ml-1 px-2 py-0.5 rounded-md
+                   bg-slate-950/35 text-[10px] font-bold tracking-widest text-sky-100
+                   border border-white/15">
+        54 REAGENTS
+      </span>
     </button>
 
-    <!-- Control dock -->
-    <div class="flex-none rounded-xl bg-slate-900 border border-slate-800 p-3 space-y-3">
-      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Control dock</div>
+    <!-- ---------------------------------------------------------------
+         Apparatus Controls (middle)
+         --------------------------------------------------------------- -->
+    <div class="panel p-4 flex flex-col gap-4">
 
-      <div>
-        <div class="flex justify-between mono text-[11px] text-slate-400"><span>🔥 Bunsen burner</span><span id="burner-label" class="text-slate-100 font-bold">0 %</span></div>
-        <input id="burner" type="range" min="0" max="100" step="1" value="0" class="w-full mt-1" />
-      </div>
-      <div>
-        <div class="flex justify-between mono text-[11px] text-slate-400"><span>🌀 Magnetic stirrer</span><span id="stir-label" class="text-slate-100 font-bold">0 RPM</span></div>
-        <input id="stirrer" type="range" min="0" max="1200" step="10" value="0" class="w-full mt-1" />
-      </div>
-      <div>
-        <div class="flex justify-between mono text-[11px] text-slate-400"><span>💧 Titration valve (0.1 M NaOH)</span><span id="valve-label" class="text-slate-100 font-bold">closed</span></div>
-        <input id="valve" type="range" min="0" max="100" step="1" value="0" class="w-full mt-1" />
+      <!-- Section header -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+          </svg>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+            Apparatus Controls
+          </h2>
+        </div>
+        <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
+          Bunsen · Flow · Ignition
+        </span>
       </div>
 
-      <div class="grid grid-cols-3 gap-2 pt-1">
-        <button data-act="clear" class="rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold py-2">Clear Vessel</button>
-        <button data-act="refill" class="rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2">Refill</button>
-        <button data-act="stir" class="rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2">Stir Pulse</button>
-        <button data-act="flush" class="rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2">Flush</button>
-        <button data-act="water" class="rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold py-2">Add Water</button>
-        <button data-act="mute" class="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2">🔊 Audio</button>
+      <!-- Flame slider block -->
+      <div class="panel-inset p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-orange-400
+                         shadow-[0_0_10px_rgba(251,146,60,0.9)]"></span>
+            <span class="font-mono text-[11px] font-bold tracking-[0.18em] text-slate-300 uppercase">
+              Flame Intensity
+            </span>
+          </div>
+          <div class="flex items-baseline gap-1">
+            <span id="flameValue"
+                  class="font-mono text-lg font-extrabold text-orange-300
+                         [text-shadow:0_0_14px_rgba(251,146,60,0.55)]">0</span>
+            <span class="font-mono text-xs font-bold text-slate-500">%</span>
+          </div>
+        </div>
+
+        <input
+          id="flameSlider"
+          type="range"
+          min="0" max="100" step="1" value="0"
+          aria-label="Bunsen burner flame intensity"
+          class="w-full"
+        />
+
+        <div class="flex justify-between mt-2 font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
+          <span>Off</span>
+          <span>Soft</span>
+          <span>Roaring</span>
+          <span>Max</span>
+        </div>
+
+        <!-- Quick-preset chips -->
+        <div class="flex flex-wrap gap-2 mt-3">
+          <button type="button" data-flame="0"
+                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                         bg-slate-800/80 border border-slate-600/60 text-slate-300
+                         hover:border-sky-400/60 hover:text-sky-200 transition">OFF</button>
+          <button type="button" data-flame="25"
+                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                         bg-slate-800/80 border border-slate-600/60 text-slate-300
+                         hover:border-sky-400/60 hover:text-sky-200 transition">LOW</button>
+          <button type="button" data-flame="55"
+                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                         bg-slate-800/80 border border-slate-600/60 text-slate-300
+                         hover:border-sky-400/60 hover:text-sky-200 transition">MEDIUM</button>
+          <button type="button" data-flame="85"
+                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                         bg-slate-800/80 border border-slate-600/60 text-slate-300
+                         hover:border-amber-400/60 hover:text-amber-200 transition">HIGH</button>
+          <button type="button" data-flame="100"
+                  class="flame-preset px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-widest uppercase
+                         bg-slate-800/80 border border-slate-600/60 text-slate-300
+                         hover:border-rose-400/60 hover:text-rose-200 transition">MAX</button>
+        </div>
+      </div>
+
+      <!-- Action row: Ignite H₂ · Reset Vessel · Mute audio -->
+      <div class="grid grid-cols-3 gap-2.5">
+        <button id="igniteBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.16em] uppercase
+                       bg-amber-500/15 border border-amber-400/40 text-amber-200
+                       hover:bg-amber-500/25 hover:border-amber-300/70
+                       active:scale-[0.97] transition-all">
+          ⚡ Ignite H₂
+        </button>
+        <button id="resetVesselBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.16em] uppercase
+                       bg-rose-500/15 border border-rose-400/40 text-rose-200
+                       hover:bg-rose-500/25 hover:border-rose-300/70
+                       active:scale-[0.97] transition-all">
+          ⟲ Reset Vessel
+        </button>
+        <button id="muteBtn" type="button"
+                class="px-3 py-2.5 rounded-lg font-mono text-[10px] font-bold tracking-[0.16em] uppercase
+                       bg-sky-500/15 border border-sky-400/40 text-sky-200
+                       hover:bg-sky-500/25 hover:border-sky-300/70
+                       active:scale-[0.97] transition-all">
+          🔊 Audio
+        </button>
+      </div>
+
+      <!-- Quick water dosing (also mirrored inside modal) -->
+      <div class="panel-inset p-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-mono text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">
+            Solvent · H₂O
+          </span>
+          <span class="font-mono text-[9px] tracking-[0.14em] text-slate-500 uppercase">
+            required for reaction
+          </span>
+        </div>
+        <div class="grid grid-cols-4 gap-2">
+          <button type="button" data-water="50"
+                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
+                         bg-slate-800/80 border border-slate-600/60 text-sky-200
+                         hover:border-sky-400/60 hover:bg-slate-700/80 transition">+50 mL</button>
+          <button type="button" data-water="100"
+                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
+                         bg-slate-800/80 border border-slate-600/60 text-sky-200
+                         hover:border-sky-400/60 hover:bg-slate-700/80 transition">+100 mL</button>
+          <button type="button" data-water="250"
+                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
+                         bg-slate-800/80 border border-slate-600/60 text-sky-200
+                         hover:border-sky-400/60 hover:bg-slate-700/80 transition">+250 mL</button>
+          <button type="button" data-water="-50"
+                  class="water-preset px-2 py-2 rounded-md font-mono text-[10px] font-bold tracking-widest
+                         bg-slate-800/80 border border-slate-600/60 text-rose-200
+                         hover:border-rose-400/60 hover:bg-slate-700/80 transition">−50 mL</button>
+        </div>
       </div>
     </div>
 
-    <!-- Telemetry -->
-    <div class="flex-none rounded-xl bg-slate-900 border border-slate-800 p-3">
-      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-500 mb-2">Analytics telemetry</div>
-      <div id="telemetry" class="grid grid-cols-3 gap-2 mono text-[11px]"></div>
-    </div>
+    <!-- ---------------------------------------------------------------
+         Thermodynamics Telemetry grid (bottom)
+         --------------------------------------------------------------- -->
+    <div class="panel p-4 flex-1 min-h-0 flex flex-col">
 
-    <!-- Vessel manifest -->
-    <div class="flex-1 min-h-[120px] rounded-xl bg-slate-900 border border-slate-800 p-3">
-      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-500 mb-2">Vessel manifest</div>
-      <div id="manifest" class="space-y-1 mono text-[11px] text-slate-300"></div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="M7 15l4-4 3 3 6-7"/>
+          </svg>
+          <h2 class="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase">
+            Thermodynamics · Telemetry
+          </h2>
+        </div>
+        <span class="font-mono text-[9px] tracking-[0.16em] text-slate-500 uppercase">
+          live · si units
+        </span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-x-5 gap-y-1 flex-1 overflow-y-auto scroll-lab pr-1">
+
+        <!-- Column 1 -->
+        <div class="flex flex-col">
+          <div class="tele-row">
+            <span class="tele-key">Mass</span>
+            <span class="tele-val" id="telemetryMass">0.00 g</span>
+          </div>
+          <div class="tele-row">
+            <span class="tele-key">Volume</span>
+            <span class="tele-val" id="telemetryVolume">0.0 mL</span>
+          </div>
+          <div class="tele-row">
+            <span class="tele-key">Molarity</span>
+            <span class="tele-val" id="telemetryMolarity">0.0000 M</span>
+          </div>
+        </div>
+
+        <!-- Column 2 -->
+        <div class="flex flex-col">
+          <div class="tele-row">
+            <span class="tele-key">Temperature</span>
+            <span class="tele-val" id="telemetryTemp">25.0 °C</span>
+          </div>
+          <div class="tele-row">
+            <span class="tele-key">Species</span>
+            <span class="tele-val" id="telemetrySpecies">0</span>
+          </div>
+          <div class="tele-row">
+            <span class="tele-key">Sim Time</span>
+            <span class="tele-val" id="telemetryTime">0.0 s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer chips -->
+      <div class="mt-3 pt-3 border-t border-slate-700/40 flex flex-wrap items-center gap-2
+                  font-mono text-[9px] tracking-[0.14em] uppercase text-slate-500">
+        <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">q = mcΔT</span>
+        <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">Tb = 100.00 °C</span>
+        <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">Kw(25 °C) = 1.00e-14</span>
+        <span class="px-2 py-1 rounded-md bg-slate-800/60 border border-slate-700/60">ΔfH°₂₉₈ · kJ/mol</span>
+      </div>
     </div>
   </section>
-</div>
 
-<!-- ================= REAGENT OVERLAY MODAL ================= -->
-<div id="overlay" class="fixed inset-0 z-50 hidden">
-  <div id="overlay-backdrop" class="absolute inset-0 bg-black/70"></div>
-  <div class="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-slate-950 border-l border-slate-800 flex flex-col fade-in">
-    <div class="flex-none p-3 border-b border-slate-800 flex items-center gap-2">
-      <div class="font-bold text-slate-100">Reagent &amp; Element Library</div>
-      <span id="db-count" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400"></span>
-      <button id="close-library" class="ml-auto rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-1 text-sm">✕</button>
+  <!-- ==================================================================
+       REAGENT MODAL — hidden absolute overlay
+       ================================================================== -->
+  <div
+    id="reagentModal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="reagentModalTitle"
+    aria-hidden="true"
+    class="absolute inset-0 z-50 items-center justify-center
+           bg-slate-950/80 backdrop-blur-md p-3"
+    style="display:none;"
+  >
+    <!-- Panel -->
+    <div class="panel w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+
+      <!-- Modal header -->
+      <div class="flex items-center justify-between px-5 py-4
+                  border-b border-slate-700/50
+                  bg-gradient-to-r from-sky-950/60 via-slate-900/60 to-slate-950/60">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-lg bg-sky-500/15 border border-sky-400/40
+                      flex items-center justify-center">
+            <svg class="w-5 h-5 text-sky-300" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5"/>
+              <path d="M14 3h7v7"/><path d="M21 3l-9 9"/>
+            </svg>
+          </div>
+          <div>
+            <h2 id="reagentModalTitle"
+                class="font-mono text-sm font-extrabold tracking-[0.16em] uppercase text-slate-100">
+              Reagent Library
+            </h2>
+            <p class="font-mono text-[10px] tracking-[0.14em] text-slate-500 uppercase mt-0.5">
+              54 reagents · 17 categories · auto-unit dosing
+            </p>
+          </div>
+        </div>
+
+        <button
+          id="closeReagentModalBtn"
+          type="button"
+          aria-label="Close reagent modal"
+          class="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-600/60
+                 hover:border-rose-400/60 hover:text-rose-200
+                 text-slate-300 font-mono text-base font-bold
+                 flex items-center justify-center transition-all"
+        >✕</button>
+      </div>
+
+      <!-- Modal body: populated by app.js -->
+      <div data-vl-body class="flex-1 overflow-y-auto scroll-lab px-5 py-4">
+        <!-- app.js builds: search row, category select, reagent grid, amount+unit, water controls -->
+      </div>
+
+      <!-- Modal footer -->
+      <div class="px-5 py-3 border-t border-slate-700/50
+                  bg-slate-950/70
+                  flex flex-wrap items-center justify-between gap-2
+                  font-mono text-[10px] tracking-[0.14em] uppercase text-slate-500">
+        <span>ESC to close · M to mute · dry vessel protocol armed</span>
+        <span class="flex items-center gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>engine ready</span>
+        </span>
+      </div>
     </div>
-    <div class="flex-none p-3 space-y-2 border-b border-slate-800">
-      <input id="search" placeholder="Search name or formula…  (e.g. H2SO4, sodium)" class="qty w-full rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 border border-slate-700" />
-      <div id="tabs" class="flex flex-wrap gap-1"></div>
-    </div>
-    <div id="reagent-list" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
   </div>
-</div>
 
-<script>
-/* =========================================================================
-   1. EXHAUSTIVE ACADEMIC DATABASE — window.ChemicalsDB
-   Row format:
-   id;name;formula;category;state;molarMass;density;color;solutionColor;ph;
-   enthalpyFormation(kJ/mol);specificHeat(J/g·K);solubility(g/L);flameColor;flags
-   flags: W=reactsViolentlyWithWater  A:n=strong acid n protons  a:n=weak acid
-          B:n=strong base n OH        b:n=weak base   IND=indicator  CAT=catalyst
-   ========================================================================= */
-const RAW = `
-li;Lithium;Li;alkali;solid;6.94;0.53;#cbd5e1;#f1f5f9;7;0;3.58;0;#dc2626;W
-na;Sodium;Na;alkali;solid;22.99;0.97;#e2e8f0;#f1f5f9;7;0;1.23;0;#facc15;W
-k;Potassium;K;alkali;solid;39.10;0.86;#dbe3ec;#f1f5f9;7;0;0.75;0;#c084fc;W
-rb;Rubidium;Rb;alkali;solid;85.47;1.53;#e5e7eb;#f1f5f9;7;0;0.36;0;#e879f9;W
-cs;Caesium;Cs;alkali;solid;132.91;1.93;#fde68a;#f1f5f9;7;0;0.24;0;#93c5fd;W
-naoh;Sodium hydroxide;NaOH;base;solid;40.00;2.13;#f8fafc;#e0f2fe;13.5;-425.6;1.49;1090;#facc15;B:1
-koh;Potassium hydroxide;KOH;base;solid;56.11;2.04;#f8fafc;#e0f2fe;13.5;-424.7;1.18;1210;#c084fc;B:1
-lioh;Lithium hydroxide;LiOH;base;solid;23.95;1.46;#f8fafc;#e0f2fe;13;-484.9;2.07;128;#dc2626;B:1
-caoh2;Calcium hydroxide;Ca(OH)2;base;solid;74.09;2.21;#f1f5f9;#f0fdf4;12.4;-985.2;1.18;1.6;#f97316;B:2
-baoh2;Barium hydroxide;Ba(OH)2;base;solid;171.34;2.18;#f8fafc;#f0fdf4;13;-944.7;0.47;38;#a3e635;B:2
-mgoh2;Magnesium hydroxide;Mg(OH)2;base;solid;58.32;2.34;#f8fafc;#f8fafc;10.3;-924.5;1.32;0.01;#f8fafc;b:2
-aloh3;Aluminium hydroxide;Al(OH)3;base;solid;78.00;2.42;#f1f5f9;#f8fafc;9;-1277;1.28;0.0001;#f8fafc;b:3
-nh3aq;Ammonia solution;NH3(aq);base;aqueous;17.03;0.91;#dbeafe;#dbeafe;11.6;-80.3;4.70;480;#f8fafc;b:1
-nh4oh;Ammonium hydroxide;NH4OH;base;aqueous;35.05;0.91;#dbeafe;#dbeafe;11.6;-366;4.20;480;#f8fafc;b:1
-hcl;Hydrochloric acid;HCl;acid;aqueous;36.46;1.18;#e0f2fe;#e0f2fe;0.5;-167.2;3.47;720;#f8fafc;A:1
-h2so4;Sulfuric acid;H2SO4;acid;liquid;98.08;1.84;#fef9c3;#fef9c3;0.3;-814;1.42;999;#f8fafc;A:2
-hno3;Nitric acid;HNO3;acid;liquid;63.01;1.51;#fef3c7;#fef3c7;0.6;-207.4;1.72;999;#f8fafc;A:1
-hclo4;Perchloric acid;HClO4;acid;liquid;100.46;1.77;#f1f5f9;#f1f5f9;0.1;-40.6;1.30;999;#f8fafc;A:1
-hbr;Hydrobromic acid;HBr;acid;aqueous;80.91;1.49;#fde68a;#fde68a;0.6;-121.5;0.85;999;#f8fafc;A:1
-hi;Hydroiodic acid;HI;acid;aqueous;127.91;1.70;#fed7aa;#fed7aa;0.6;-55.2;0.68;999;#f8fafc;A:1
-hf;Hydrofluoric acid;HF;acid;aqueous;20.01;1.15;#e2e8f0;#e2e8f0;3.1;-332.6;1.46;999;#f8fafc;a:1
-h3po4;Phosphoric acid;H3PO4;acid;liquid;97.99;1.88;#f8fafc;#f8fafc;1.5;-1271.7;1.62;548;#f8fafc;a:3
-ch3cooh;Acetic acid;CH3COOH;acid;liquid;60.05;1.05;#f8fafc;#f8fafc;2.4;-484.5;2.05;999;#f8fafc;a:1
-h2co3;Carbonic acid;H2CO3;acid;aqueous;62.03;1.00;#e0f2fe;#e0f2fe;3.9;-699.6;4.00;999;#f8fafc;a:2
-hno2;Nitrous acid;HNO2;acid;aqueous;47.01;1.00;#fef9c3;#fef9c3;3.3;-79.5;3.10;999;#f8fafc;a:1
-h2c2o4;Oxalic acid;H2C2O4;acid;solid;90.03;1.90;#f8fafc;#f8fafc;1.3;-829.9;1.62;95;#f8fafc;a:2
-c6h8o7;Citric acid;C6H8O7;acid;solid;192.12;1.66;#f8fafc;#f8fafc;2.2;-1543.8;1.37;592;#f8fafc;a:3
-h2s;Hydrogen sulfide;H2S;gas;gas;34.08;0.0015;#fef9c3;#fef9c3;4.5;-20.6;1.00;4;#93c5fd;a:2
-be;Beryllium;Be;alkaline;solid;9.01;1.85;#94a3b8;#f1f5f9;7;0;1.82;0;#f8fafc;-
-mg;Magnesium;Mg;alkaline;solid;24.31;1.74;#cbd5e1;#f1f5f9;7;0;1.02;0;#f8fafc;-
-ca;Calcium;Ca;alkaline;solid;40.08;1.55;#e2e8f0;#f1f5f9;7;0;0.65;0;#f97316;W
-sr;Strontium;Sr;alkaline;solid;87.62;2.64;#e2e8f0;#f1f5f9;7;0;0.30;0;#ef4444;W
-ba;Barium;Ba;alkaline;solid;137.33;3.51;#e2e8f0;#f1f5f9;7;0;0.20;0;#a3e635;W
-mgo;Magnesium oxide;MgO;oxide;solid;40.30;3.58;#f8fafc;#f8fafc;10.3;-601.6;0.88;0.06;#f8fafc;b:2
-cao;Calcium oxide;CaO;oxide;solid;56.08;3.34;#f8fafc;#f0fdf4;12.5;-634.9;0.75;1.2;#f97316;B:2
-bao;Barium oxide;BaO;oxide;solid;153.33;5.72;#f8fafc;#f0fdf4;13;-548;0.44;38;#a3e635;B:2
-na2o;Sodium oxide;Na2O;oxide;solid;61.98;2.27;#f8fafc;#e0f2fe;13.8;-414.2;1.14;999;#facc15;B:2
-fe2o3;Iron(III) oxide;Fe2O3;oxide;solid;159.69;5.24;#b45309;#fef3c7;7;-824.2;0.65;0;#f97316;-
-feo;Iron(II) oxide;FeO;oxide;solid;71.84;5.74;#1f2937;#dcfce7;7;-272;0.68;0;#f97316;-
-cuo;Copper(II) oxide;CuO;oxide;solid;79.55;6.31;#111827;#bfdbfe;7;-157.3;0.53;0;#34d399;-
-cu2o;Copper(I) oxide;Cu2O;oxide;solid;143.09;6.00;#b91c1c;#bfdbfe;7;-168.6;0.63;0;#34d399;-
-zno;Zinc oxide;ZnO;oxide;solid;81.38;5.61;#f8fafc;#f8fafc;7;-350.5;0.49;0;#f8fafc;-
-al2o3;Aluminium oxide;Al2O3;oxide;solid;101.96;3.95;#f1f5f9;#f8fafc;7;-1675.7;0.78;0;#f8fafc;-
-mno2;Manganese dioxide;MnO2;oxide;solid;86.94;5.03;#111827;#f8fafc;7;-520;0.61;0;#f8fafc;CAT
-cr2o3;Chromium(III) oxide;Cr2O3;oxide;solid;151.99;5.22;#166534;#bbf7d0;7;-1139.7;0.75;0;#34d399;-
-pbo;Lead(II) oxide;PbO;oxide;solid;223.20;9.53;#fbbf24;#f8fafc;7;-217.3;0.21;0;#93c5fd;-
-sio2;Silicon dioxide;SiO2;oxide;solid;60.08;2.65;#f8fafc;#f8fafc;7;-910.7;0.70;0;#f8fafc;-
-p2o5;Phosphorus pentoxide;P2O5;oxide;solid;141.94;2.39;#f8fafc;#fef9c3;1.5;-1492;0.85;999;#f8fafc;a:3
-so3;Sulfur trioxide;SO3;oxide;solid;80.06;1.92;#f8fafc;#fef9c3;0.5;-395.7;0.63;999;#f8fafc;A:2
-fe;Iron;Fe;transition;solid;55.85;7.87;#78716c;#dcfce7;7;0;0.45;0;#f97316;-
-cu;Copper;Cu;transition;solid;63.55;8.96;#b45309;#bfdbfe;7;0;0.385;0;#34d399;-
-zn;Zinc;Zn;transition;solid;65.38;7.14;#94a3b8;#f1f5f9;7;0;0.388;0;#93c5fd;-
-ag;Silver;Ag;transition;solid;107.87;10.49;#e5e7eb;#f8fafc;7;0;0.235;0;#93c5fd;-
-au;Gold;Au;transition;solid;196.97;19.3;#fbbf24;#f8fafc;7;0;0.129;0;#fbbf24;-
-ni;Nickel;Ni;transition;solid;58.69;8.91;#cbd5e1;#dcfce7;7;0;0.44;0;#f8fafc;-
-co;Cobalt;Co;transition;solid;58.93;8.90;#94a3b8;#fecaca;7;0;0.42;0;#93c5fd;-
-mn;Manganese;Mn;transition;solid;54.94;7.21;#a8a29e;#fce7f3;7;0;0.48;0;#f8fafc;-
-cr;Chromium;Cr;transition;solid;52.00;7.19;#cbd5e1;#bbf7d0;7;0;0.45;0;#34d399;-
-ti;Titanium;Ti;transition;solid;47.87;4.51;#cbd5e1;#f8fafc;7;0;0.52;0;#f8fafc;-
-al;Aluminium;Al;posttransition;solid;26.98;2.70;#cbd5e1;#f8fafc;7;0;0.90;0;#f8fafc;-
-pb;Lead;Pb;posttransition;solid;207.20;11.34;#64748b;#f8fafc;7;0;0.128;0;#93c5fd;-
-sn;Tin;Sn;posttransition;solid;118.71;7.31;#cbd5e1;#f8fafc;7;0;0.228;0;#93c5fd;-
-hg;Mercury;Hg;posttransition;liquid;200.59;13.53;#cbd5e1;#f8fafc;7;0;0.14;0;#93c5fd;-
-nacl;Sodium chloride;NaCl;salt;solid;58.44;2.16;#f8fafc;#f1f5f9;7;-411.2;0.86;360;#facc15;-
-kcl;Potassium chloride;KCl;salt;solid;74.55;1.98;#f8fafc;#f1f5f9;7;-436.7;0.69;344;#c084fc;-
-licl;Lithium chloride;LiCl;salt;solid;42.39;2.07;#f8fafc;#f1f5f9;7;-408.6;1.14;832;#dc2626;-
-nahco3;Sodium bicarbonate;NaHCO3;salt;solid;84.01;2.20;#f8fafc;#f1f5f9;8.3;-950.8;1.05;96;#facc15;b:1
-na2co3;Sodium carbonate;Na2CO3;salt;solid;105.99;2.54;#f8fafc;#f1f5f9;11.6;-1130.7;1.04;217;#facc15;b:2
-k2co3;Potassium carbonate;K2CO3;salt;solid;138.21;2.43;#f8fafc;#f1f5f9;11.6;-1151;0.92;1120;#c084fc;b:2
-caco3;Calcium carbonate;CaCO3;salt;solid;100.09;2.71;#f8fafc;#f8fafc;9.4;-1207.6;0.82;0.013;#f97316;b:2
-nano3;Sodium nitrate;NaNO3;salt;solid;84.99;2.26;#f8fafc;#f1f5f9;7;-467.9;1.09;912;#facc15;-
-kno3;Potassium nitrate;KNO3;salt;solid;101.10;2.11;#f8fafc;#f1f5f9;7;-494.6;0.95;383;#c084fc;-
-na2so4;Sodium sulfate;Na2SO4;salt;solid;142.04;2.66;#f8fafc;#f1f5f9;7;-1387.1;0.90;280;#facc15;-
-k2so4;Potassium sulfate;K2SO4;salt;solid;174.26;2.66;#f8fafc;#f1f5f9;7;-1437.8;0.83;120;#c084fc;-
-mgso4;Magnesium sulfate;MgSO4;salt;solid;120.37;2.66;#f8fafc;#f1f5f9;7;-1284.9;0.80;353;#f8fafc;-
-caso4;Calcium sulfate;CaSO4;salt;solid;136.14;2.96;#f8fafc;#f8fafc;7;-1434.5;0.73;2.1;#f97316;-
-baso4;Barium sulfate;BaSO4;salt;solid;233.39;4.49;#f8fafc;#f8fafc;7;-1473.2;0.45;0.0025;#a3e635;-
-bacl2;Barium chloride;BaCl2;salt;solid;208.23;3.86;#f8fafc;#f1f5f9;7;-855;0.38;358;#a3e635;-
-cacl2;Calcium chloride;CaCl2;salt;solid;110.98;2.15;#f8fafc;#f1f5f9;7;-795.4;0.66;745;#f97316;-
-mgcl2;Magnesium chloride;MgCl2;salt;solid;95.21;2.32;#f8fafc;#f1f5f9;7;-641.3;0.71;543;#f8fafc;-
-srcl2;Strontium chloride;SrCl2;salt;solid;158.53;3.05;#f8fafc;#f1f5f9;7;-828.9;0.48;538;#ef4444;-
-alcl3;Aluminium chloride;AlCl3;salt;solid;133.34;2.48;#f8fafc;#f1f5f9;3;-704.2;0.72;458;#f8fafc;a:1
-fecl3;Iron(III) chloride;FeCl3;salt;solid;162.20;2.90;#78350f;#fef3c7;2.5;-399.5;0.68;920;#f97316;a:1
-feso4;Iron(II) sulfate;FeSO4;salt;solid;151.91;2.84;#a7f3d0;#dcfce7;3.5;-928.4;0.71;295;#f97316;a:1
-cuso4;Copper(II) sulfate;CuSO4;salt;solid;159.61;3.60;#38bdf8;#0ea5e9;4;-771.4;0.65;320;#34d399;a:1
-cucl2;Copper(II) chloride;CuCl2;salt;solid;134.45;3.39;#22d3ee;#22d3ee;3.5;-220.1;0.70;757;#34d399;a:1
-znso4;Zinc sulfate;ZnSO4;salt;solid;161.47;3.54;#f8fafc;#f1f5f9;5;-982.8;0.67;577;#93c5fd;a:1
-zncl2;Zinc chloride;ZnCl2;salt;solid;136.29;2.91;#f8fafc;#f1f5f9;4;-415.1;0.71;4320;#93c5fd;a:1
-agno3;Silver nitrate;AgNO3;salt;solid;169.87;4.35;#f8fafc;#f8fafc;6;-124.4;0.55;2160;#93c5fd;-
-agcl;Silver chloride;AgCl;salt;solid;143.32;5.56;#f8fafc;#f8fafc;7;-127;0.48;0.0019;#93c5fd;-
-pbno32;Lead(II) nitrate;Pb(NO3)2;salt;solid;331.20;4.53;#f8fafc;#f8fafc;4;-451.9;0.42;597;#93c5fd;-
-pbi2;Lead(II) iodide;PbI2;salt;solid;461.01;6.16;#facc15;#f8fafc;7;-175.5;0.22;0.76;#93c5fd;-
-ki;Potassium iodide;KI;salt;solid;166.00;3.12;#f8fafc;#f1f5f9;7;-327.9;0.32;1400;#c084fc;-
-kbr;Potassium bromide;KBr;salt;solid;119.00;2.75;#f8fafc;#f1f5f9;7;-393.8;0.44;678;#c084fc;-
-nai;Sodium iodide;NaI;salt;solid;149.89;3.67;#f8fafc;#f1f5f9;7;-287.8;0.35;1842;#facc15;-
-kmno4;Potassium permanganate;KMnO4;salt;solid;158.03;2.70;#581c87;#7e22ce;7;-813.4;0.77;64;#c084fc;-
-k2cr2o7;Potassium dichromate;K2Cr2O7;salt;solid;294.18;2.68;#ea580c;#f97316;4;-2033;0.78;130;#c084fc;-
-kclo3;Potassium chlorate;KClO3;salt;solid;122.55;2.32;#f8fafc;#f1f5f9;7;-397.7;0.85;73;#c084fc;-
-nh4cl;Ammonium chloride;NH4Cl;salt;solid;53.49;1.53;#f8fafc;#f1f5f9;5.5;-314.4;1.57;372;#f8fafc;a:1
-nh4no3;Ammonium nitrate;NH4NO3;salt;solid;80.04;1.72;#f8fafc;#f1f5f9;5.4;-365.6;1.74;1500;#f8fafc;a:1
-nh42so4;Ammonium sulfate;(NH4)2SO4;salt;solid;132.14;1.77;#f8fafc;#f1f5f9;5.5;-1180.9;1.42;744;#f8fafc;a:1
-cocl2;Cobalt(II) chloride;CoCl2;salt;solid;129.84;3.36;#be123c;#fda4af;5;-312.5;0.55;529;#93c5fd;a:1
-nino32;Nickel(II) nitrate;Ni(NO3)2;salt;solid;182.70;2.05;#22c55e;#86efac;4.5;-415;0.60;943;#f8fafc;a:1
-kscn;Potassium thiocyanate;KSCN;salt;solid;97.18;1.89;#f8fafc;#f1f5f9;7;-200;0.88;2170;#c084fc;-
-borax;Sodium tetraborate;Na2B4O7;salt;solid;201.22;2.40;#f8fafc;#f1f5f9;9.2;-3291;0.99;31;#a3e635;b:1
-f2;Fluorine;F2;halogen;gas;38.00;0.0017;#fef08a;#fef9c3;7;0;0.82;0;#f8fafc;-
-cl2;Chlorine;Cl2;halogen;gas;70.90;0.0032;#d9f99d;#ecfccb;3;0;0.48;7;#f8fafc;a:1
-br2;Bromine;Br2;halogen;liquid;159.81;3.10;#b45309;#fdba74;3;0;0.47;35;#f8fafc;a:1
-i2;Iodine;I2;halogen;solid;253.81;4.93;#3b0764;#a78bfa;5;0;0.21;0.33;#a78bfa;-
-h2;Hydrogen;H2;gas;gas;2.02;0.00009;#e0f2fe;#f1f5f9;7;0;14.30;0;#93c5fd;-
-o2;Oxygen;O2;gas;gas;32.00;0.0013;#bfdbfe;#f1f5f9;7;0;0.92;0.04;#f8fafc;-
-n2;Nitrogen;N2;gas;gas;28.01;0.00125;#e2e8f0;#f1f5f9;7;0;1.04;0.02;#f8fafc;-
-co2;Carbon dioxide;CO2;gas;gas;44.01;0.0020;#e2e8f0;#f1f5f9;5.6;-393.5;0.84;1.7;#f8fafc;a:1
-cog;Carbon monoxide;CO;gas;gas;28.01;0.00125;#e2e8f0;#f1f5f9;7;-110.5;1.04;0.03;#93c5fd;-
-no2;Nitrogen dioxide;NO2;gas;gas;46.01;0.0019;#b45309;#fed7aa;3.4;33.2;0.81;999;#f8fafc;a:1
-nog;Nitric oxide;NO;gas;gas;30.01;0.00125;#e2e8f0;#f1f5f9;7;90.3;1.00;0.06;#f8fafc;-
-so2;Sulfur dioxide;SO2;gas;gas;64.07;0.0027;#fef9c3;#fef9c3;1.9;-296.8;0.64;94;#f8fafc;a:1
-nh3g;Ammonia gas;NH3;gas;gas;17.03;0.00073;#e0f2fe;#dbeafe;11.6;-45.9;2.19;480;#f8fafc;b:1
-he;Helium;He;noble;gas;4.00;0.00018;#f1f5f9;#f1f5f9;7;0;5.19;0;#fbbf24;-
-ne;Neon;Ne;noble;gas;20.18;0.0009;#fb7185;#f1f5f9;7;0;1.03;0;#fb7185;-
-ar;Argon;Ar;noble;gas;39.95;0.0018;#e2e8f0;#f1f5f9;7;0;0.52;0;#a5b4fc;-
-h2o;Distilled water;H2O;solvent;liquid;18.02;1.00;#7dd3fc;#7dd3fc;7;-285.8;4.18;999;#f8fafc;-
-etoh;Ethanol;C2H5OH;solvent;liquid;46.07;0.789;#e0f2fe;#e0f2fe;7;-277.6;2.44;999;#93c5fd;-
-meoh;Methanol;CH3OH;solvent;liquid;32.04;0.792;#e0f2fe;#e0f2fe;7;-238.7;2.53;999;#93c5fd;-
-acetone;Acetone;C3H6O;solvent;liquid;58.08;0.784;#f1f5f9;#f1f5f9;7;-248.4;2.18;999;#93c5fd;-
-hexane;n-Hexane;C6H14;solvent;liquid;86.18;0.655;#f1f5f9;#f1f5f9;7;-198.7;2.26;0.01;#f97316;-
-toluene;Toluene;C7H8;solvent;liquid;92.14;0.867;#f1f5f9;#f1f5f9;7;12.4;1.70;0.5;#f97316;-
-dcm;Dichloromethane;CH2Cl2;solvent;liquid;84.93;1.33;#f1f5f9;#f1f5f9;7;-124.2;1.19;13;#f8fafc;-
-ether;Diethyl ether;C4H10O;solvent;liquid;74.12;0.713;#f1f5f9;#f1f5f9;7;-252.2;2.28;69;#f97316;-
-dmso;Dimethyl sulfoxide;C2H6OS;solvent;liquid;78.13;1.10;#f1f5f9;#f1f5f9;7;-204.2;1.96;999;#f8fafc;-
-glycerol;Glycerol;C3H8O3;solvent;liquid;92.09;1.26;#f1f5f9;#f1f5f9;7;-669.6;2.43;999;#f8fafc;-
-h2o2;Hydrogen peroxide;H2O2;solvent;liquid;34.01;1.45;#e0f2fe;#e0f2fe;6.2;-187.8;2.62;999;#f8fafc;-
-glucose;D-Glucose;C6H12O6;organic;solid;180.16;1.54;#f8fafc;#f1f5f9;7;-1273;1.22;909;#f97316;-
-sucrose;Sucrose;C12H22O11;organic;solid;342.30;1.59;#f8fafc;#f1f5f9;7;-2226;1.24;2000;#f97316;-
-urea;Urea;CH4N2O;organic;solid;60.06;1.32;#f8fafc;#f1f5f9;7.2;-333.1;1.34;1080;#f8fafc;-
-benzoic;Benzoic acid;C7H6O2;organic;solid;122.12;1.27;#f8fafc;#f8fafc;2.8;-385.2;1.20;3.4;#f97316;a:1
-naphthalene;Naphthalene;C10H8;organic;solid;128.17;1.14;#f8fafc;#f8fafc;7;78.5;1.30;0.03;#f97316;-
-etoac;Ethyl acetate;C4H8O2;organic;liquid;88.11;0.902;#f1f5f9;#f1f5f9;7;-479;1.90;83;#f97316;-
-s8;Sulfur;S;nonmetal;solid;32.07;2.07;#facc15;#fef9c3;7;0;0.71;0;#3b82f6;-
-p4;Red phosphorus;P;nonmetal;solid;30.97;2.34;#dc2626;#fecaca;7;-17.6;0.77;0;#a3e635;-
-c;Graphite;C;nonmetal;solid;12.01;2.27;#1f2937;#f1f5f9;7;0;0.71;0;#f97316;-
-si;Silicon;Si;nonmetal;solid;28.09;2.33;#94a3b8;#f1f5f9;7;0;0.71;0;#f8fafc;-
-phenolphthalein;Phenolphthalein;C20H14O4;indicator;aqueous;318.32;1.30;#f8fafc;#f8fafc;7;-1200;1.50;0.4;#f8fafc;IND
-methylorange;Methyl orange;C14H14N3NaO3S;indicator;aqueous;327.33;1.28;#f97316;#f97316;7;-1000;1.50;5;#f8fafc;IND
-litmus;Litmus solution;C7H7O4N;indicator;aqueous;180.00;1.02;#a78bfa;#a78bfa;7;-900;1.60;10;#f8fafc;IND
-bromothymol;Bromothymol blue;C27H28Br2O5S;indicator;aqueous;624.38;1.25;#38bdf8;#38bdf8;7;-1100;1.45;0.1;#f8fafc;IND
-universal;Universal indicator;mix;indicator;aqueous;250.00;1.02;#22c55e;#22c55e;7;-1000;1.55;10;#f8fafc;IND
-`.trim();
+  <!-- ==================================================================
+       SCRIPT BOOTSTRAP — sequential, bottom of body
+       ================================================================== -->
+  <script src="chemicals.js"></script>
+  <script src="engine.js"></script>
+  <script src="canvas.js"></script>
+  <script src="app.js"></script>
 
-const CATEGORY_LABELS = {
-  all:"All", alkali:"Alkali metals", alkaline:"Alkaline earth", transition:"Transition",
-  posttransition:"Post-transition", halogen:"Halogens", acid:"Acids", base:"Bases",
-  oxide:"Oxides", salt:"Salts", gas:"Gases", noble:"Noble gases", solvent:"Solvents",
-  organic:"Organic", nonmetal:"Non-metals", indicator:"Indicators"
-};
+  <!-- ==================================================================
+       Small glue script: preset chips + modal close, delegating to app.js
+       ================================================================== -->
+  <script>
+    (function () {
+      'use strict';
 
-window.ChemicalsDB = RAW.split("\n").map(function (line) {
-  const f = line.split(";");
-  const flags = f[14] || "-";
-  const m = /^([AaBb]):(\d)$/.exec(flags);
-  return {
-    id: f[0], name: f[1], formula: f[2], category: f[3], state: f[4],
-    molarMass: +f[5], density: +f[6], color: f[7], solutionColor: f[8], ph: +f[9],
-    enthalpyFormation: +f[10], specificHeat: +f[11], solubility: +f[12], flameColor: f[13],
-    reactsViolentlyWithWater: flags === "W",
-    isCatalyst: flags === "CAT",
-    isIndicator: flags === "IND",
-    acidBaseType: m ? (m[1] === "A" ? "strong-acid" : m[1] === "a" ? "weak-acid" : m[1] === "B" ? "strong-base" : "weak-base") : null,
-    ionizable: m ? +m[2] : 0
-  };
-});
+      const $ = (id) => document.getElementById(id);
 
-/* Ionic pairing map used for Ksp precipitation checks */
-const CATIONS = { agno3:"Ag+", pbno32:"Pb2+", bacl2:"Ba2+", cacl2:"Ca2+", cuso4:"Cu2+", fecl3:"Fe3+", ag:"Ag+", pb:"Pb2+", ba:"Ba2+", ca:"Ca2+", baoh2:"Ba2+", caoh2:"Ca2+", srcl2:"Sr2+" };
-const ANIONS  = { nacl:"Cl-", kcl:"Cl-", licl:"Cl-", hcl:"Cl-", bacl2:"Cl-", cacl2:"Cl-", mgcl2:"Cl-", ki:"I-", nai:"I-", kbr:"Br-", h2so4:"SO4 2-", na2so4:"SO4 2-", k2so4:"SO4 2-", mgso4:"SO4 2-", cuso4:"SO4 2-", na2co3:"CO3 2-", k2co3:"CO3 2-", nahco3:"HCO3-", naoh:"OH-", koh:"OH-" };
-const KSP = {
-  "Ag+|Cl-":  { solid:"AgCl",  color:"#f8fafc", ksp:1.8e-10, label:"AgCl(s) curdy white" },
-  "Ag+|Br-":  { solid:"AgBr",  color:"#fef3c7", ksp:5.4e-13, label:"AgBr(s) cream" },
-  "Ag+|I-":   { solid:"AgI",   color:"#fde68a", ksp:8.5e-17, label:"AgI(s) yellow" },
-  "Pb2+|I-":  { solid:"PbI2",  color:"#facc15", ksp:9.8e-9,  label:"PbI2(s) golden rain" },
-  "Pb2+|Cl-": { solid:"PbCl2", color:"#f8fafc", ksp:1.7e-5,  label:"PbCl2(s) white" },
-  "Ba2+|SO4 2-": { solid:"BaSO4", color:"#f8fafc", ksp:1.1e-10, label:"BaSO4(s) dense white" },
-  "Ca2+|SO4 2-": { solid:"CaSO4", color:"#f8fafc", ksp:4.9e-5,  label:"CaSO4(s) chalky" },
-  "Ca2+|CO3 2-": { solid:"CaCO3", color:"#f8fafc", ksp:3.3e-9,  label:"CaCO3(s) milky" },
-  "Ba2+|CO3 2-": { solid:"BaCO3", color:"#f8fafc", ksp:2.6e-9,  label:"BaCO3(s) white" },
-  "Cu2+|OH-": { solid:"Cu(OH)2", color:"#0ea5e9", ksp:2.2e-20, label:"Cu(OH)2(s) pale blue gel" },
-  "Fe3+|OH-": { solid:"Fe(OH)3", color:"#b45309", ksp:2.8e-39, label:"Fe(OH)3(s) rust gel" }
-};
-const ALKALI_PRODUCT = { li:"LiOH", na:"NaOH", k:"KOH", rb:"RbOH", cs:"CsOH" };
-const ALKALI_ENERGY  = { li:-222, na:-368, k:-460, rb:-520, cs:-600 };  // kJ/mol released
-
-/* =========================================================================
-   2. RIGOROUS PHYSICAL CHEMISTRY ENGINE — window.ChemistryEngine
-   ========================================================================= */
-window.ChemistryEngine = (function () {
-  const AMBIENT = 25.0, KW = 1e-14;
-
-  const vessel = {
-    contents: [], waterVolume: 0, solids: [], gases: [],
-    pH: 7.0, temperature: AMBIENT,
-    molH: 0, molOH: 0, precipitate: 0, precipColor: "#f8fafc",
-    gasMoles: 0, heat: 0, enthalpy: 0, indicators: [],
-    equation: "— awaiting reagents —", tag: "idle", violent: 0, fizz: 0, steam: 0
-  };
-
-  function resetVessel() {
-    vessel.contents.length = 0; vessel.solids.length = 0; vessel.gases.length = 0;
-    vessel.indicators.length = 0;
-    vessel.waterVolume = 0; vessel.pH = 7.0; vessel.temperature = AMBIENT;
-    vessel.molH = 0; vessel.molOH = 0; vessel.precipitate = 0; vessel.precipColor = "#f8fafc";
-    vessel.gasMoles = 0; vessel.heat = 0; vessel.enthalpy = 0;
-    vessel.equation = "— awaiting reagents —"; vessel.tag = "idle";
-    vessel.violent = 0; vessel.fizz = 0; vessel.steam = 0;
-    return vessel;
-  }
-
-  function get(id) { return window.ChemicalsDB.find(c => c.id === id); }
-  function isSolid(c) { return c.state === "solid"; }
-  function unitFor(c) { return isSolid(c) ? "g" : "mL"; }
-
-  /* total liquid volume in litres (water + other liquids) */
-  function volumeL() {
-    let mL = vessel.waterVolume;
-    vessel.contents.forEach(e => { if (e.chem.state !== "solid" && e.chem.state !== "gas" && e.chem.id !== "h2o") mL += e.volume || 0; });
-    return Math.max(mL, 0) / 1000;
-  }
-  function totalMass() {
-    let m = vessel.waterVolume * 1.0;
-    vessel.contents.forEach(e => m += e.mass);
-    return m;
-  }
-  function meanSpecificHeat() {
-    const m = totalMass();
-    if (m <= 0) return 4.18;
-    let num = vessel.waterVolume * 4.18;
-    vessel.contents.forEach(e => num += e.mass * e.chem.specificHeat);
-    return num / m;
-  }
-  function molarity() {
-    const V = volumeL();
-    if (V <= 0) return 0;
-    let n = 0;
-    vessel.contents.forEach(e => { if (e.chem.id !== "h2o" && e.chem.state !== "gas") n += e.moles; });
-    return n / V;
-  }
-
-  /* pH = -log10[H+]  /  pOH = -log10[OH-] */
-  function recomputePH() {
-    const V = volumeL();
-    if (V <= 0) { vessel.pH = 7.0; return; }
-    const net = vessel.molH - vessel.molOH;
-    if (Math.abs(net) < 1e-12) { vessel.pH = 7.0; return; }
-    if (net > 0) {
-      const h = net / V;
-      vessel.pH = Math.max(0, Math.min(14, -Math.log10(Math.max(h, 1e-14))));
-    } else {
-      const oh = -net / V;
-      const pOH = -Math.log10(Math.max(oh, 1e-14));
-      vessel.pH = Math.max(0, Math.min(14, 14 - pOH));
-    }
-  }
-
-  function addHeat(kJ) {
-    const m = totalMass();
-    if (m <= 0) return;
-    // q = m·c·ΔT  ⇒  ΔT = q / (m·c)
-    const dT = (kJ * 1000) / (m * meanSpecificHeat());
-    vessel.temperature = Math.min(vessel.temperature + dT, 2200);
-    vessel.heat += kJ;
-  }
-
-  function ions() {
-    const cat = [], an = [];
-    vessel.contents.forEach(e => {
-      if (e.chem.state === "solid" && vessel.waterVolume === 0) return; // dry solids do not ionise
-      const c = CATIONS[e.chem.id], a = ANIONS[e.chem.id];
-      if (c) cat.push({ ion: c, moles: e.moles });
-      if (a) an.push({ ion: a, moles: e.moles });
-    });
-    if (vessel.molOH > 1e-9) an.push({ ion: "OH-", moles: vessel.molOH });
-    return { cat, an };
-  }
-
-  function checkPrecipitation(log) {
-    const V = volumeL();
-    if (V <= 0) return;
-    const { cat, an } = ions();
-    cat.forEach(c => an.forEach(a => {
-      const rule = KSP[c.ion + "|" + a.ion];
-      if (!rule) return;
-      const Q = (c.moles / V) * (a.moles / V);
-      if (Q > rule.ksp) {
-        const n = Math.min(c.moles, a.moles);
-        if (n <= 0) return;
-        vessel.precipitate += n;
-        vessel.precipColor = rule.color;
-        vessel.tag = "precipitation";
-        vessel.equation = c.ion + "(aq) + " + a.ion + "(aq) → " + rule.solid + "(s)↓";
-        log("PRECIPITATION Q=" + Q.toExponential(2) + " > Ksp=" + rule.ksp.toExponential(2) + " → " + rule.label, "warn");
-      }
-    }));
-  }
-
-  /* Core reaction resolver, run after every addition/perturbation */
-  function react(log) {
-    const dry = vessel.waterVolume === 0;
-
-    vessel.contents.forEach(e => {
-      if (e.reacted) return;
-      const c = e.chem;
-
-      /* --- BUG-2 GUARD: alkali metal in a DRY vessel stays inert --- */
-      if (c.reactsViolentlyWithWater) {
-        if (dry) {
-          e.inert = true;
-          vessel.equation = c.formula + "(s) — inert dry solid, no aqueous phase";
-          vessel.tag = "inert solid";
-          log(c.name + " rests as dry " + c.formula + "(s). waterVolume = 0 mL → NO reaction.", "dim");
-          return; // not marked reacted: it will fire the moment water arrives
-        }
-        e.reacted = true; e.inert = false;
-        const prod = ALKALI_PRODUCT[c.id];
-        if (prod) {
-          vessel.molOH += e.moles;
-          vessel.gasMoles += e.moles / 2;
-          const dH = ALKALI_ENERGY[c.id] * e.moles;
-          vessel.enthalpy += dH;
-          addHeat(-dH);
-          vessel.violent = Math.min(1, vessel.violent + Math.min(1, e.moles * 3 + 0.35));
-          vessel.equation = "2" + c.formula + "(s) + 2H₂O(l) → 2" + prod + "(aq) + H₂(g)↑";
-          vessel.tag = "violent · exothermic";
-          log("RUNAWAY: " + c.name + " + water → " + prod + "(aq) + H₂(g)↑  ΔH = " + dH.toFixed(1) + " kJ", "bad");
-          Audio.explosion();
-        } else {
-          // Ca/Sr/Ba: brisk but controlled
-          vessel.molOH += 2 * e.moles;
-          vessel.gasMoles += e.moles;
-          const dH = -430 * e.moles;
-          vessel.enthalpy += dH; addHeat(-dH);
-          vessel.fizz = 1;
-          vessel.equation = c.formula + "(s) + 2H₂O(l) → " + c.formula + "(OH)₂(aq) + H₂(g)↑";
-          vessel.tag = "exothermic";
-          log(c.name + " effervesces in water, liberating H₂(g).", "warn");
-          Audio.fizz();
-        }
-        return;
-      }
-
-      if (dry && c.state === "solid") {
-        vessel.equation = c.formula + "(s) — dry solid, awaiting solvent";
-        vessel.tag = "dry solid";
-        log(c.name + " added as dry " + c.formula + "(s); no solvent present.", "dim");
-        return;
-      }
-      e.reacted = true;
-
-      /* Acids & bases contribute H+ / OH- (weak species partially dissociate) */
-      if (c.acidBaseType) {
-        const strong = c.acidBaseType.indexOf("strong") === 0;
-        const alpha = strong ? 1 : 0.04;
-        const n = e.moles * c.ionizable * alpha;
-        if (c.acidBaseType.indexOf("acid") >= 0) {
-          vessel.molH += n;
-          log(c.name + " dissociates: +" + n.toExponential(2) + " mol H⁺ (" + (strong ? "strong" : "weak, α≈4%") + ")");
-        } else {
-          vessel.molOH += n;
-          log(c.name + " dissociates: +" + n.toExponential(2) + " mol OH⁻ (" + (strong ? "strong" : "weak, α≈4%") + ")");
-        }
-        if (strong) { addHeat(-57.3 * n * 0.35); }
-      }
-
-      /* Metal + acid → salt + H2 */
-      if ((c.category === "transition" || c.category === "posttransition" || c.category === "alkaline") && vessel.molH > 1e-9 && c.id !== "cu" && c.id !== "ag" && c.id !== "au") {
-        const n = Math.min(e.moles, vessel.molH / 2);
-        if (n > 0) {
-          vessel.molH -= 2 * n;
-          vessel.gasMoles += n;
-          vessel.enthalpy += -150 * n; addHeat(150 * n);
-          vessel.fizz = 1;
-          vessel.equation = c.formula + "(s) + 2H⁺(aq) → " + c.formula + "²⁺(aq) + H₂(g)↑";
-          vessel.tag = "single displacement";
-          log("Displacement: " + c.name + " dissolves in acid, evolving " + (n).toFixed(4) + " mol H₂(g).", "warn");
-          Audio.fizz();
-        }
-      }
-
-      /* Carbonate / bicarbonate + acid → CO2 */
-      if ((c.id === "nahco3" || c.id === "na2co3" || c.id === "k2co3" || c.id === "caco3") && vessel.molH > 1e-9) {
-        const n = Math.min(e.moles, vessel.molH / 2);
-        if (n > 0) {
-          vessel.molH -= 2 * n;
-          vessel.gasMoles += n;
-          vessel.fizz = 1;
-          vessel.enthalpy += -30 * n;
-          vessel.equation = c.formula + " + 2H⁺(aq) → " + (c.id === "caco3" ? "Ca²⁺" : "Na⁺") + "(aq) + H₂O(l) + CO₂(g)↑";
-          vessel.tag = "gas evolution";
-          log("Effervescence: CO₂(g) released, " + n.toFixed(4) + " mol → " + (n * 22.4).toFixed(3) + " L at STP.", "warn");
-          Audio.fizz();
-        }
-      }
-
-      /* H2O2 decomposition catalysed by MnO2 */
-      if (c.id === "h2o2" && vessel.contents.some(x => x.chem.isCatalyst)) {
-        vessel.gasMoles += e.moles / 2;
-        vessel.enthalpy += -98 * e.moles; addHeat(98 * e.moles);
-        vessel.steam = 1; vessel.fizz = 1;
-        vessel.equation = "2H₂O₂(aq) --MnO₂--> 2H₂O(l) + O₂(g)↑";
-        vessel.tag = "catalysed decomposition";
-        log("Catalysis: MnO₂ decomposes H₂O₂ → O₂(g), " + (e.moles / 2).toFixed(4) + " mol.", "warn");
-        Audio.fizz();
-      }
-
-      if (c.isIndicator) { vessel.indicators.push(c.id); log("Indicator loaded: " + c.name + "."); }
-    });
-
-    /* Neutralisation bookkeeping: H+ + OH- → H2O, ΔH = -57.3 kJ/mol */
-    const neutral = Math.min(vessel.molH, vessel.molOH);
-    if (neutral > 1e-9) {
-      vessel.molH -= neutral; vessel.molOH -= neutral;
-      vessel.enthalpy += -57.3 * neutral;
-      addHeat(57.3 * neutral);
-      vessel.equation = "H⁺(aq) + OH⁻(aq) → H₂O(l)   ΔH = −57.3 kJ/mol";
-      vessel.tag = "neutralisation";
-      log("Neutralised " + neutral.toExponential(2) + " mol H⁺/OH⁻; q = " + (57.3 * neutral).toFixed(2) + " kJ released.");
-    }
-
-    checkPrecipitation(log);
-    recomputePH();
-  }
-
-  function addReagent(id, amount, log) {
-    const c = get(id);
-    if (!c) return;
-    const qty = Math.max(0, +amount || 0);
-    if (qty === 0) { log("Zero quantity ignored.", "dim"); return; }
-
-    if (c.id === "h2o") {
-      vessel.waterVolume += qty;
-      log("Charged " + qty.toFixed(1) + " mL distilled H₂O(l). Aqueous phase present.", "good");
-      Audio.pour();
-      vessel.contents.forEach(e => { if (e.inert) { e.inert = false; e.reacted = false; } });
-      react(log);
-      return;
-    }
-
-    const solid = isSolid(c);
-    const mass = solid ? qty : qty * c.density;
-    const entry = {
-      chem: c, amount: qty, unit: solid ? "g" : "mL",
-      mass: mass, moles: mass / c.molarMass,
-      volume: solid ? 0 : qty, reacted: false, inert: false
-    };
-    vessel.contents.push(entry);
-    if (solid) vessel.solids.push(entry); else if (c.state === "gas") vessel.gases.push(entry);
-    if (c.state === "aqueous") vessel.waterVolume += qty * 0.95; // aqueous reagents carry water
-
-    log("Added " + qty + " " + entry.unit + " " + c.name + " (" + c.formula + ") = " + entry.moles.toFixed(4) + " mol.", "good");
-    Audio.click();
-    react(log);
-  }
-
-  /* Bunsen burner thermodynamics — called each animation tick */
-  function thermalTick(dt, burnerPct, log) {
-    const m = totalMass();
-    if (m <= 0) { vessel.temperature = AMBIENT; vessel.steam = 0; return; }
-    const c = meanSpecificHeat();
-    // burner power: up to 900 W of useful flux
-    const q = (burnerPct / 100) * 900 * dt;               // joules this tick
-    const cooling = (vessel.temperature - AMBIENT) * 0.55 * dt * (m > 0 ? 1 : 0) * 4;
-    const dT = (q - cooling) / (m * c);
-    vessel.temperature += dT;
-    vessel.heat += q / 1000;
-    const boiling = vessel.waterVolume > 0;
-    if (boiling && vessel.temperature >= 100) {
-      vessel.temperature = 100;                            // latent-heat plateau
-      vessel.steam = 1;
-      const evap = (burnerPct / 100) * 6 * dt;             // mL boiled off
-      vessel.waterVolume = Math.max(0, vessel.waterVolume - evap);
-      if (vessel.waterVolume === 0 && log) log("Vessel boiled dry — aqueous phase exhausted.", "warn");
-      recomputePH();
-    } else if (vessel.temperature < 95) {
-      vessel.steam = Math.max(0, vessel.steam - dt);
-    }
-    if (vessel.temperature < AMBIENT) vessel.temperature = AMBIENT;
-  }
-
-  function flameColor() {
-    let best = null;
-    vessel.contents.forEach(e => {
-      const f = e.chem.flameColor;
-      if (f && f !== "#f8fafc") best = best || f;
-    });
-    return best;
-  }
-
-  function gasLitres() { return vessel.gasMoles * 22.4; }
-
-  return { vessel, resetVessel, addReagent, react, recomputePH, thermalTick, flameColor,
-           volumeL, totalMass, molarity, meanSpecificHeat, gasLitres, unitFor, get, addHeat };
-})();
-
-/* =========================================================================
-   4. WEB AUDIO API SOUND SYNTHESIZER (procedural, zero assets)
-   ========================================================================= */
-const Audio = (function () {
-  let ctx = null, muted = false, hiss = null, hissGain = null, boilTimer = 0;
-  function ac() { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } } return ctx; }
-  function noiseBuffer(sec) {
-    const c = ac(); const b = c.createBuffer(1, c.sampleRate * sec, c.sampleRate);
-    const d = b.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    return b;
-  }
-  function env(node, gain, attack, decay) {
-    const c = ac(), g = c.createGain(), t = c.currentTime;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(muted ? 0 : gain, t + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-    node.connect(g); g.connect(c.destination);
-    node.start(t); node.stop(t + attack + decay + 0.05);
-  }
-  return {
-    toggle() { muted = !muted; if (hissGain) hissGain.gain.value = 0; return muted; },
-    muted() { return muted; },
-    click() { const c = ac(); if (!c || muted) return; const o = c.createOscillator(); o.type = "triangle"; o.frequency.value = 1500; env(o, 0.08, 0.002, 0.06); },
-    pour() { const c = ac(); if (!c || muted) return; const s = c.createBufferSource(); s.buffer = noiseBuffer(0.7); const f = c.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 700; f.Q.value = 1.2; s.connect(f); env(f, 0.12, 0.05, 0.6); s.start(); s.stop(c.currentTime + 0.8); },
-    fizz() { const c = ac(); if (!c || muted) return; const s = c.createBufferSource(); s.buffer = noiseBuffer(1.2); s.loop = false; const f = c.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 2600; s.connect(f); const g = c.createGain(); g.gain.setValueAtTime(0.001, c.currentTime); g.gain.linearRampToValueAtTime(0.10, c.currentTime + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 1.1); f.connect(g); g.connect(c.destination); s.start(); s.stop(c.currentTime + 1.2); },
-    boil() { const c = ac(); if (!c || muted) return; const now = performance.now(); if (now - boilTimer < 260) return; boilTimer = now; const o = c.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(180 + Math.random() * 180, c.currentTime); o.frequency.exponentialRampToValueAtTime(90, c.currentTime + 0.12); env(o, 0.05, 0.005, 0.12); },
-    explosion() { const c = ac(); if (!c || muted) return; const s = c.createBufferSource(); s.buffer = noiseBuffer(1.6); const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(2400, c.currentTime); f.frequency.exponentialRampToValueAtTime(120, c.currentTime + 1.0); s.connect(f); env(f, 0.55, 0.005, 1.2); s.start(); s.stop(c.currentTime + 1.4);
-      const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.setValueAtTime(90, c.currentTime); o.frequency.exponentialRampToValueAtTime(28, c.currentTime + 0.7); env(o, 0.35, 0.005, 0.8); },
-    burner(level) {
-      const c = ac(); if (!c) return;
-      if (level <= 0) { if (hissGain) hissGain.gain.value = 0; return; }
-      if (!hiss) {
-        hiss = c.createBufferSource(); hiss.buffer = noiseBuffer(2); hiss.loop = true;
-        const f = c.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1100; f.Q.value = 0.7;
-        hissGain = c.createGain(); hissGain.gain.value = 0;
-        hiss.connect(f); f.connect(hissGain); hissGain.connect(c.destination); hiss.start();
-      }
-      hissGain.gain.value = muted ? 0 : 0.02 + (level / 100) * 0.07;
-    }
-  };
-})();
-
-/* =========================================================================
-   3. HTML5 CANVAS GRAPHICS ENGINE — window.CanvasRenderer
-   ========================================================================= */
-window.CanvasRenderer = (function () {
-  const canvas = document.getElementById("lab-canvas");
-  const ctx = canvas.getContext("2d");
-  let W = 0, H = 0, dpr = 1, t = 0, shake = 0, flash = 0;
-  const bubbles = [], smoke = [], sparks = [], sediment = [];
-
-  function resize() {
-    dpr = window.devicePixelRatio || 1;
-    W = canvas.clientWidth; H = canvas.clientHeight;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  window.addEventListener("resize", resize);
-
-  function shockwave(power) { shake = Math.max(shake, 14 * power); flash = 1; for (let i = 0; i < 70; i++) sparks.push({ x: W / 2, y: H * 0.42, vx: (Math.random() - .5) * 9, vy: -Math.random() * 7 - 1, life: 1, c: Math.random() < .5 ? "#fbbf24" : "#f97316" }); }
-
-  function spawnBubble(x, y, r) { bubbles.push({ x, y, r, life: 1, vy: -(0.5 + Math.random()) }); }
-  function spawnSmoke(x, y, color) { smoke.push({ x, y, r: 4 + Math.random() * 8, life: 1, vy: -(0.35 + Math.random() * 0.7), vx: (Math.random() - .5) * 0.6, color }); }
-
-  function beakerGeom() {
-    const bw = Math.min(190, W * 0.42), bh = 150;
-    const bx = W / 2 - bw / 2, by = H * 0.20;
-    return { bx, by, bw, bh };
-  }
-
-  function draw() {
-    const v = window.ChemistryEngine.vessel;
-    const g = beakerGeom();
-    t += 1 / 60;
-
-    ctx.clearRect(0, 0, W, H);
-    // bench gradient
-    const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, "#0b1220"); bg.addColorStop(1, "#020617");
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-
-    ctx.save();
-    if (shake > 0.2) { ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); shake *= 0.90; }
-
-    /* ---- Bunsen burner + flame under the beaker ---- */
-    const burner = UI.burnerLevel();
-    const baseY = g.by + g.bh + 34;
-    ctx.fillStyle = "#334155"; ctx.fillRect(W / 2 - 26, baseY + 14, 52, 8);
-    ctx.fillStyle = "#475569"; ctx.fillRect(W / 2 - 7, baseY - 16, 14, 32);
-    if (burner > 0) {
-      const ion = window.ChemistryEngine.flameColor();
-      const h = 16 + (burner / 100) * 46;
-      for (let i = 0; i < 3; i++) {
-        const flick = Math.sin(t * 14 + i * 2) * 3;
-        const fh = h * (1 - i * 0.22);
-        const grad = ctx.createLinearGradient(0, baseY - 16, 0, baseY - 16 - fh);
-        grad.addColorStop(0, ion || "#38bdf8");
-        grad.addColorStop(0.45, ion || "#60a5fa");
-        grad.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.globalAlpha = 0.55 - i * 0.13;
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.moveTo(W / 2 - 9 + i * 3, baseY - 16);
-        ctx.quadraticCurveTo(W / 2 + flick, baseY - 16 - fh, W / 2 + 9 - i * 3, baseY - 16);
-        ctx.closePath(); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      if (Math.random() < 0.25) spawnSmoke(W / 2 + (Math.random() - .5) * 10, baseY - 16 - h, "rgba(148,163,184,");
-    }
-
-    /* ---- Beaker glass ---- */
-    ctx.lineWidth = 3; ctx.strokeStyle = "rgba(203,213,225,0.55)";
-    ctx.beginPath();
-    ctx.moveTo(g.bx, g.by);
-    ctx.lineTo(g.bx, g.by + g.bh - 10);
-    ctx.quadraticCurveTo(g.bx, g.by + g.bh, g.bx + 12, g.by + g.bh);
-    ctx.lineTo(g.bx + g.bw - 12, g.by + g.bh);
-    ctx.quadraticCurveTo(g.bx + g.bw, g.by + g.bh, g.bx + g.bw, g.by + g.bh - 10);
-    ctx.lineTo(g.bx + g.bw, g.by);
-    ctx.stroke();
-    // spout
-    ctx.beginPath(); ctx.moveTo(g.bx + g.bw, g.by); ctx.lineTo(g.bx + g.bw + 12, g.by - 6); ctx.stroke();
-
-    // graduations 100..500 mL
-    ctx.strokeStyle = "rgba(148,163,184,0.35)"; ctx.lineWidth = 1;
-    ctx.fillStyle = "rgba(148,163,184,0.65)"; ctx.font = "9px ui-monospace,monospace";
-    for (let mL = 100; mL <= 500; mL += 100) {
-      const y = g.by + g.bh - (mL / 500) * (g.bh - 6);
-      ctx.beginPath(); ctx.moveTo(g.bx + 4, y); ctx.lineTo(g.bx + 20, y); ctx.stroke();
-      ctx.fillText(mL, g.bx + 24, y + 3);
-    }
-
-    /* ---- Fluid with meniscus + waves ---- */
-    const totalmL = Math.min(500, v.waterVolume + v.contents.reduce((s, e) => s + (e.chem.state === "solid" || e.chem.state === "gas" ? 0 : e.volume), 0));
-    const fh = (totalmL / 500) * (g.bh - 6);
-    const surfaceY = g.by + g.bh - fh;
-    if (totalmL > 0.5) {
-      const col = UI.fluidColor();
-      const stir = UI.stirLevel();
-      const amp = 1.2 + (stir / 1200) * 5 + (v.temperature >= 100 ? 2.5 : 0);
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(g.bx + 2, surfaceY);
-      for (let x = 0; x <= g.bw - 4; x += 6) {
-        const y = surfaceY + Math.sin((x / 18) + t * (2 + stir / 200)) * amp;
-        ctx.lineTo(g.bx + 2 + x, y);
-      }
-      ctx.lineTo(g.bx + g.bw - 2, g.by + g.bh - 2);
-      ctx.lineTo(g.bx + 2, g.by + g.bh - 2);
-      ctx.closePath();
-      const fg = ctx.createLinearGradient(0, surfaceY, 0, g.by + g.bh);
-      fg.addColorStop(0, col.top); fg.addColorStop(1, col.bottom);
-      ctx.fillStyle = fg; ctx.fill();
-      // meniscus highlight
-      ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.restore();
-
-      /* sediment / precipitate layer */
-      if (v.precipitate > 0) {
-        const ph = Math.min(26, 4 + v.precipitate * 55);
-        ctx.fillStyle = v.precipColor;
-        ctx.globalAlpha = 0.85;
-        ctx.beginPath();
-        ctx.moveTo(g.bx + 3, g.by + g.bh - 2);
-        for (let x = 0; x <= g.bw - 6; x += 8) ctx.lineTo(g.bx + 3 + x, g.by + g.bh - 2 - ph + Math.sin(x / 9 + t) * 1.6);
-        ctx.lineTo(g.bx + g.bw - 3, g.by + g.bh - 2);
-        ctx.closePath(); ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-
-      /* boiling / effervescence bubbles */
-      const boiling = v.temperature >= 100;
-      const rate = (boiling ? 0.9 : 0) + (v.fizz > 0 ? 0.7 : 0) + (UI.stirLevel() / 1200) * 0.4;
-      if (Math.random() < rate) spawnBubble(g.bx + 8 + Math.random() * (g.bw - 16), g.by + g.bh - 6, 1.2 + Math.random() * 3);
-      if (boiling) { Audio.boil(); if (Math.random() < 0.3) spawnSmoke(g.bx + g.bw / 2 + (Math.random() - .5) * 40, surfaceY, "rgba(226,232,240,"); }
-      if (v.gasMoles > 0 && Math.random() < 0.25) spawnSmoke(g.bx + g.bw / 2 + (Math.random() - .5) * 50, surfaceY, UI.gasTint());
-
-      // stirrer vortex
-      if (UI.stirLevel() > 0) {
-        ctx.strokeStyle = "rgba(255,255,255,0.18)";
-        ctx.beginPath();
-        ctx.ellipse(g.bx + g.bw / 2, g.by + g.bh - 12, 26 * (0.4 + UI.stirLevel() / 1500), 6, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    } else {
-      ctx.fillStyle = "rgba(148,163,184,0.55)"; ctx.font = "11px ui-monospace,monospace";
-      ctx.fillText("DRY", g.bx + g.bw / 2 - 12, g.by + g.bh - 14);
-    }
-
-    /* dry solids resting on the bottom */
-    if (totalmL <= 0.5) {
-      let px = g.bx + 12;
-      v.contents.filter(e => e.chem.state === "solid").slice(0, 12).forEach(e => {
-        ctx.fillStyle = e.chem.color;
-        const s = Math.min(16, 5 + Math.cbrt(e.mass) * 3);
-        ctx.fillRect(px, g.by + g.bh - 4 - s, s, s);
-        px += s + 4;
+      /* ---- Flame presets ---- */
+      document.querySelectorAll('.flame-preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const v = btn.getAttribute('data-flame');
+          const slider = $('flameSlider');
+          if (!slider) return;
+          slider.value = v;
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+          slider.dispatchEvent(new Event('change', { bubbles: true }));
+        });
       });
-    }
 
-    /* particles */
-    for (let i = bubbles.length - 1; i >= 0; i--) {
-      const b = bubbles[i]; b.y += b.vy; b.life -= 0.012;
-      if (b.y < surfaceY || b.life <= 0) { bubbles.splice(i, 1); continue; }
-      ctx.strokeStyle = "rgba(255,255,255," + (0.5 * b.life) + ")";
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.stroke();
-    }
-    for (let i = smoke.length - 1; i >= 0; i--) {
-      const s = smoke[i]; s.y += s.vy; s.x += s.vx; s.r += 0.35; s.life -= 0.011;
-      if (s.life <= 0) { smoke.splice(i, 1); continue; }
-      ctx.fillStyle = s.color + (0.20 * s.life) + ")";
-      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
-    }
-    for (let i = sparks.length - 1; i >= 0; i--) {
-      const p = sparks[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.22; p.life -= 0.02;
-      if (p.life <= 0) { sparks.splice(i, 1); continue; }
-      ctx.globalAlpha = p.life; ctx.fillStyle = p.c;
-      ctx.fillRect(p.x, p.y, 2.5, 2.5); ctx.globalAlpha = 1;
-    }
+      /* ---- Water presets (delegate to engine + audio) ---- */
+      document.querySelectorAll('.water-preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const delta = parseFloat(btn.getAttribute('data-water')) || 0;
+          const ENG = window.ChemistryEngine;
+          const APP = window.VirtuaLabApp;
+          if (!ENG) return;
+          APP?.audio?.init?.();
+          APP?.audio?.resume?.();
+          if (delta > 0) {
+            ENG.addWater(delta);
+            APP?.audio?.pour?.();
+          } else if (delta < 0) {
+            ENG.removeWater(-delta);
+          }
+        });
+      });
 
-    if (flash > 0) { ctx.fillStyle = "rgba(255,255,255," + flash * 0.55 + ")"; ctx.fillRect(-40, -40, W + 80, H + 80); flash -= 0.06; }
-    ctx.restore();
+      /* ---- Ignite H₂ ---- */
+      $('igniteBtn')?.addEventListener('click', () => {
+        const ENG = window.ChemistryEngine;
+        const APP = window.VirtuaLabApp;
+        if (!ENG) return;
+        APP?.audio?.init?.();
+        APP?.audio?.resume?.();
+        const res = ENG.igniteGas();
+        if (res && res.ignitedAny) {
+          APP?.audio?.thud?.(1.2);
+          window.CanvasRenderer?.triggerExplosion?.(0.85);
+        } else {
+          APP?.audio?.click?.();
+        }
+      });
 
-    if (v.violent > 0) { shockwave(v.violent); v.violent = 0; }
-    if (v.fizz > 0) v.fizz = Math.max(0, v.fizz - 0.004);
-  }
+      /* ---- Reset vessel (duplicate of in-modal button) ---- */
+      $('resetVesselBtn')?.addEventListener('click', () => {
+        const ENG = window.ChemistryEngine;
+        const APP = window.VirtuaLabApp;
+        if (!ENG) return;
+        ENG.reset();
+        APP?.audio?.fizzStop?.();
+        APP?.audio?.click?.();
+        const log = $('logTerminal'); if (log) log.innerHTML = '';
+        const banner = $('formulaBanner');
+        if (banner) {
+          banner.innerHTML =
+            '<div class="vl-eq" style="color:#475569;">◌ Vessel dry — add water to initiate chemistry</div>';
+        }
+        const slider = $('flameSlider');
+        if (slider) {
+          slider.value = '0';
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+          slider.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
 
-  resize();
-  return { draw, resize, shockwave };
-})();
+      /* ---- Mute (mirror of in-modal button) ---- */
+      $('muteBtn')?.addEventListener('click', () => {
+        const APP = window.VirtuaLabApp;
+        if (!APP || !APP.audio) return;
+        APP.audio.init();
+        APP.audio.resume();
+        APP.audio.setEnabled(!APP.audio.enabled);
+        if (!APP.audio.enabled) APP.audio.fizzStop();
+        const btn = $('muteBtn');
+        if (btn) btn.textContent = APP.audio.enabled ? '🔊 Audio' : '🔇 Muted';
+      });
 
-/* =========================================================================
-   5. DOM CONTROLLERS / UI
-   ========================================================================= */
-const UI = (function () {
-  const E = window.ChemistryEngine, V = E.vessel;
-  const el = id => document.getElementById(id);
-  const logBox = el("log");
-  let activeCat = "all", search = "", valveAccum = 0;
+      /* ---- Modal close button ---- */
+      $('closeReagentModalBtn')?.addEventListener('click', () => {
+        window.VirtuaLabApp?.closeModal?.();
+      });
 
-  function stamp() {
-    const d = new Date();
-    return "[" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + ":" + String(d.getSeconds()).padStart(2, "0") + "]";
-  }
-  function log(msg, kind) {
-    const colors = { good: "text-emerald-300", warn: "text-amber-300", bad: "text-rose-400", dim: "text-slate-500" };
-    const div = document.createElement("div");
-    div.className = colors[kind] || "text-emerald-300";
-    div.textContent = stamp() + " " + msg;
-    logBox.appendChild(div);
-    while (logBox.children.length > 400) logBox.removeChild(logBox.firstChild);
-    logBox.scrollTop = logBox.scrollHeight;
-  }
+      /* ---- Safety: keep body from scroll-bouncing on iOS ---- */
+      document.addEventListener('touchmove', (e) => {
+        if (e.target && e.target.closest && e.target.closest('.scroll-lab')) return;
+        if (e.target && e.target.tagName === 'INPUT') return;
+        e.preventDefault();
+      }, { passive: false });
+    })();
+  </script>
 
-  const burnerLevel = () => +el("burner").value;
-  const stirLevel = () => +el("stirrer").value;
-  const valveLevel = () => +el("valve").value;
-
-  function indicatorColor() {
-    const ph = V.pH;
-    if (V.indicators.includes("phenolphthalein")) return ph >= 8.2 ? "#f472b6" : null;
-    if (V.indicators.includes("methylorange")) return ph <= 3.1 ? "#dc2626" : ph >= 4.4 ? "#f59e0b" : "#fb923c";
-    if (V.indicators.includes("litmus")) return ph < 7 ? "#ef4444" : "#3b82f6";
-    if (V.indicators.includes("bromothymol")) return ph < 6 ? "#facc15" : ph > 7.6 ? "#2563eb" : "#22c55e";
-    if (V.indicators.includes("universal")) return ph < 3 ? "#dc2626" : ph < 6 ? "#f97316" : ph < 8 ? "#22c55e" : ph < 11 ? "#0ea5e9" : "#7e22ce";
-    return null;
-  }
-  function fluidColor() {
-    const ind = indicatorColor();
-    let base = "#7dd3fc";
-    V.contents.forEach(e => { if (e.chem.state !== "solid" || e.chem.solubility > 1) base = e.chem.solutionColor || base; });
-    const c = ind || base;
-    return { top: c + "cc", bottom: c + "88" };
-  }
-  function gasTint() {
-    if (V.contents.some(e => e.chem.id === "no2")) return "rgba(180,83,9,";
-    if (V.contents.some(e => e.chem.id === "cl2")) return "rgba(217,249,157,";
-    return "rgba(203,213,225,";
-  }
-
-  /* ---------- Reagent library ---------- */
-  function buildTabs() {
-    const tabs = el("tabs"); tabs.innerHTML = "";
-    const cats = ["all"].concat(Array.from(new Set(window.ChemicalsDB.map(c => c.category))));
-    cats.forEach(cat => {
-      const b = document.createElement("button");
-      b.className = "text-[11px] px-2 py-1 rounded-lg border " + (cat === activeCat ? "bg-sky-600 border-sky-500 text-white font-bold" : "bg-slate-900 border-slate-700 text-slate-300");
-      b.textContent = CATEGORY_LABELS[cat] || cat;
-      b.onclick = () => { activeCat = cat; buildTabs(); renderList(); };
-      tabs.appendChild(b);
-    });
-  }
-  function renderList() {
-    const list = el("reagent-list"); list.innerHTML = "";
-    const q = search.trim().toLowerCase();
-    const items = window.ChemicalsDB.filter(c =>
-      (activeCat === "all" || c.category === activeCat) &&
-      (!q || c.name.toLowerCase().includes(q) || c.formula.toLowerCase().includes(q) || c.id.includes(q)));
-    el("db-count").textContent = items.length + " / " + window.ChemicalsDB.length + " species";
-    if (!items.length) { list.innerHTML = '<div class="text-slate-500 text-sm">No species match that query.</div>'; return; }
-    items.forEach(c => {
-      const solid = c.state === "solid";
-      const unit = E.unitFor(c);
-      const row = document.createElement("div");
-      row.className = "rounded-xl bg-slate-900 border border-slate-800 p-2 flex items-center gap-2";
-      row.innerHTML =
-        '<span class="w-3 h-8 rounded" style="background:' + c.color + '"></span>' +
-        '<div class="flex-1 min-w-0">' +
-          '<div class="text-sm text-slate-100 font-semibold truncate">' + c.name + '</div>' +
-          '<div class="mono text-[10px] text-slate-400 truncate">' + c.formula + ' (' + c.state[0] + ') · M = ' + c.molarMass.toFixed(2) + ' g/mol · ' + (CATEGORY_LABELS[c.category] || c.category) +
-            (c.reactsViolentlyWithWater ? ' · <span class="text-rose-400 font-bold">H₂O-reactive</span>' : '') + '</div>' +
-        '</div>' +
-        '<input type="number" min="0" step="' + (solid ? "0.1" : "1") + '" value="' + (solid ? "1.0" : "50") + '" class="qty w-16 rounded-lg px-2 py-1 text-sm border border-slate-700 text-right" />' +
-        '<span class="mono text-[11px] px-1.5 py-1 rounded ' + (solid ? "bg-amber-900/60 text-amber-200" : "bg-cyan-900/60 text-cyan-200") + ' font-bold">' + unit + '</span>' +
-        '<button class="rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2">Add</button>';
-      const input = row.querySelector("input");
-      row.querySelector("button").onclick = () => { E.addReagent(c.id, +input.value, log); refresh(); };
-      list.appendChild(row);
-    });
-  }
-
-  /* ---------- Panels ---------- */
-  function phLabel(ph) {
-    const kind = ph < 3 ? "strongly acidic" : ph < 6.8 ? "acidic" : ph <= 7.2 ? "neutral" : ph < 11 ? "basic" : "strongly basic";
-    return ph.toFixed(2) + " · " + kind;
-  }
-  function refresh() {
-    el("ph-slider").value = V.pH;
-    el("ph-value").textContent = phLabel(V.pH);
-    el("equation").innerHTML = V.equation;
-    el("reaction-tag").textContent = V.tag;
-    el("hud-temp").textContent = V.temperature.toFixed(1) + " °C" + (V.temperature >= 100 && V.waterVolume > 0 ? " · BOILING" : "");
-    el("hud-state").textContent = V.waterVolume > 0
-      ? "AQUEOUS PHASE " + V.waterVolume.toFixed(1) + " mL · " + V.contents.length + " species"
-      : (V.contents.length ? "DRY VESSEL — " + V.contents.length + " inert solid(s), no solvent" : "DRY VESSEL — no liquid phase");
-
-    // species chips
-    const sp = el("species"); sp.innerHTML = "";
-    const seen = {};
-    V.contents.forEach(e => {
-      if (seen[e.chem.id]) return; seen[e.chem.id] = 1;
-      const dry = V.waterVolume === 0;
-      const st = e.chem.state === "gas" ? "g" : e.chem.state === "solid" ? (dry || e.chem.solubility < 1 ? "s" : "aq") : e.chem.state === "aqueous" ? "aq" : "l";
-      const chip = document.createElement("span");
-      chip.className = "mono text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300";
-      chip.textContent = e.chem.formula + "(" + st + ")";
-      sp.appendChild(chip);
-    });
-    if (V.gasMoles > 0) {
-      const chip = document.createElement("span");
-      chip.className = "mono text-[10px] px-2 py-0.5 rounded-full bg-sky-900 text-sky-200";
-      chip.textContent = "gas phase " + E.gasLitres().toFixed(3) + " L (STP)↑";
-      sp.appendChild(chip);
-    }
-
-    // telemetry
-    const cells = [
-      ["Mass", E.totalMass().toFixed(2) + " g"],
-      ["Volume", (E.volumeL() * 1000).toFixed(1) + " mL"],
-      ["Molarity", E.molarity().toFixed(4) + " M"],
-      ["Heat q", V.heat.toFixed(2) + " kJ"],
-      ["ΔH", V.enthalpy.toFixed(1) + " kJ"],
-      ["Gas STP", E.gasLitres().toFixed(3) + " L"],
-      ["Temp", V.temperature.toFixed(1) + " °C"],
-      ["c̄", E.meanSpecificHeat().toFixed(2) + " J/g·K"],
-      ["Precip.", V.precipitate.toFixed(4) + " mol"]
-    ];
-    el("telemetry").innerHTML = cells.map(c =>
-      '<div class="rounded-lg bg-slate-950 border border-slate-800 p-2"><div class="text-[9px] uppercase text-slate-500">' + c[0] + '</div><div class="text-slate-100 font-bold">' + c[1] + '</div></div>').join("");
-
-    // manifest
-    const man = el("manifest");
-    if (!V.contents.length && V.waterVolume === 0) man.innerHTML = '<div class="text-slate-500">Vessel empty and dry.</div>';
-    else {
-      man.innerHTML = (V.waterVolume > 0 ? '<div>• H₂O(l) — ' + V.waterVolume.toFixed(1) + ' mL</div>' : "") +
-        V.contents.map(e => '<div>• ' + e.chem.formula + (e.inert ? '(s, inert) ' : ' ') + '— ' + e.amount + ' ' + e.unit + ' · ' + e.moles.toFixed(4) + ' mol</div>').join("");
-    }
-  }
-
-  /* ---------- Controls ---------- */
-  function wire() {
-    el("open-library").onclick = () => { el("overlay").classList.remove("hidden"); renderList(); };
-    el("close-library").onclick = el("overlay-backdrop").onclick = () => el("overlay").classList.add("hidden");
-    el("search").oninput = e => { search = e.target.value; renderList(); };
-
-    el("burner").oninput = e => {
-      const lvl = +e.target.value;
-      el("burner-label").textContent = lvl + " %";
-      Audio.burner(lvl);
-      log("Bunsen burner set to " + lvl + "% — flame " + (lvl ? "ignited" : "extinguished") + ".", lvl ? "warn" : "dim");
-    };
-    el("stirrer").oninput = e => { el("stir-label").textContent = e.target.value + " RPM"; };
-    el("valve").oninput = e => {
-      const v = +e.target.value;
-      el("valve-label").textContent = v ? v + " % open" : "closed";
-    };
-
-    document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => {
-      const a = b.dataset.act;
-      if (a === "clear") { E.resetVessel(); el("burner").value = 0; el("burner-label").textContent = "0 %"; Audio.burner(0); log("VESSEL CLEARED — 100% of state memory purged.", "bad"); }
-      if (a === "refill") { E.resetVessel(); E.addReagent("h2o", 250, log); log("Vessel refilled with 250 mL distilled water.", "good"); }
-      if (a === "water") { E.addReagent("h2o", 50, log); }
-      if (a === "stir") { E.react(log); Audio.click(); log("Stir pulse — homogenised solution, equilibria re-evaluated."); }
-      if (a === "flush") { V.gases.length = 0; V.gasMoles = 0; V.precipitate = 0; log("Fume hood flush — gas phase and suspended precipitate vented."); }
-      if (a === "mute") { const m = Audio.toggle(); b.textContent = m ? "🔇 Muted" : "🔊 Audio"; Audio.burner(burnerLevel()); }
-      refresh();
-    });
-
-    window.addEventListener("keydown", e => { if (e.key === "Escape") el("overlay").classList.add("hidden"); });
-  }
-
-  /* ---------- Master loop ---------- */
-  let last = performance.now(), acc = 0;
-  function loop(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    E.thermalTick(dt, burnerLevel(), log);
-
-    // titration valve: 0.1 M NaOH drip
-    const vl = valveLevel();
-    if (vl > 0) {
-      valveAccum += dt * (vl / 100) * 3.5; // mL/s
-      if (valveAccum >= 1) {
-        const mL = Math.floor(valveAccum); valveAccum -= mL;
-        V.waterVolume += mL;
-        V.molOH += 0.1 * (mL / 1000);
-        V.contents.forEach(e => { if (e.inert) { e.inert = false; e.reacted = false; } });
-        E.react(log);
-      }
-    }
-
-    window.CanvasRenderer.draw();
-    acc += dt;
-    if (acc > 0.12) { acc = 0; refresh(); }
-    requestAnimationFrame(loop);
-  }
-
-  function boot() {
-    buildTabs(); wire(); refresh();
-    log("VirtuaLab Pro online. " + window.ChemicalsDB.length + " chemical species loaded.", "good");
-    log("Vessel state initialised: waterVolume = 0 mL, pH 7.00, T = 25.0 °C, contents = [].", "dim");
-    log("Safety note: alkali metals stay inert until an aqueous phase exists.", "dim");
-    requestAnimationFrame(loop);
-  }
-
-  return { boot, refresh, log, burnerLevel, stirLevel, valveLevel, fluidColor, gasTint };
-})();
-
-UI.boot();
-</script>
 </body>
 </html>
