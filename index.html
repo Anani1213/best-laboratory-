@@ -1,253 +1,466 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0A0F1C">
-  <title>VirtuaLab Pro — Interactive Chemistry Laboratory</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            mono: ['JetBrains Mono','ui-monospace','SFMono-Regular','Menlo','monospace'],
-            sans: ['Inter','ui-sans-serif','system-ui','sans-serif']
-          },
-          boxShadow: {
-            glow: '0 0 22px rgba(56,189,248,.10)',
-            cyan: '0 0 18px rgba(34,211,238,.16)',
-            violet: '0 0 18px rgba(99,102,241,.16)'
-          }
-        }
-      }
-    }
-  </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-  <style>
-    *{box-sizing:border-box}
-    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#0A0F1C;color:#cbd5e1}
-    body{font-family:Inter,system-ui,sans-serif}
-    button,input,select{font:inherit}
-    button{touch-action:manipulation}
-    .panel{background:rgba(15,23,42,.94);border:1px solid rgba(71,85,105,.42);box-shadow:0 8px 30px rgba(0,0,0,.20),inset 0 1px rgba(255,255,255,.025)}
-    .panel-title{letter-spacing:.08em;text-transform:uppercase;font-size:9px;font-weight:700;color:#67e8f9}
-    .micro{font:9px/1.25 "JetBrains Mono",monospace}
-    .nano{font:8px/1.15 "JetBrains Mono",monospace}
-    .btn{border:1px solid rgba(71,85,105,.55);background:#111a2c;color:#a5b4fc;transition:.15s}
-    .btn:hover{filter:brightness(1.18);border-color:rgba(99,102,241,.7)}
-    .btn:active{transform:translateY(1px)}
-    .cyan-btn{background:linear-gradient(135deg,#0e7490,#2563eb);border-color:#38bdf8;color:white}
-    .violet-btn{background:linear-gradient(135deg,#4338ca,#4f46e5,#7c3aed);border-color:#6366f1;color:white}
-    .danger-btn{color:#fda4af}
-    .range{appearance:none;width:100%;height:5px;border-radius:99px;background:linear-gradient(90deg,#22d3ee,#6366f1,#f59e0b);outline:none}
-    .range::-webkit-slider-thumb{appearance:none;width:13px;height:13px;border-radius:50%;background:#e2e8f0;border:2px solid #64748b;box-shadow:0 0 10px rgba(255,255,255,.35)}
-    .range::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#e2e8f0;border:2px solid #64748b}
-    .select{background:#08101f;border:1px solid #334155;color:#cbd5e1}
-    .field{background:#070e1b;border:1px solid #263449;color:#dbeafe;outline:none}
-    .field:focus,.select:focus{border-color:#22d3ee;box-shadow:0 0 0 2px rgba(34,211,238,.08)}
-    .grid-bg{
-      background-color:#050a14;
-      background-image:
-        linear-gradient(rgba(34,211,238,.045) 1px,transparent 1px),
-        linear-gradient(90deg,rgba(34,211,238,.045) 1px,transparent 1px),
-        radial-gradient(circle at 50% 25%,rgba(30,64,175,.10),transparent 48%);
-      background-size:18px 18px,18px 18px,100% 100%;
-    }
-    .scrollbar::-webkit-scrollbar{width:5px}
-    .scrollbar::-webkit-scrollbar-track{background:#070d18}
-    .scrollbar::-webkit-scrollbar-thumb{background:#334155;border-radius:9px}
-    .scrollbar::-webkit-scrollbar-thumb:hover{background:#475569}
-    .lib-row{background:linear-gradient(180deg,rgba(15,23,42,.96),rgba(9,16,29,.96));border:1px solid rgba(51,65,85,.55)}
-    .lib-row:hover{border-color:rgba(34,211,238,.5);background:#111c30}
-    .chip{font-size:8px;line-height:16px;height:17px;padding:0 7px;border-radius:999px;border:1px solid #334155;background:#0b1424;color:#94a3b8;white-space:nowrap}
-    .chip.active{background:#164e63;color:#67e8f9;border-color:#0891b2}
-    .meter{height:6px;border-radius:999px;background:#111827;overflow:hidden}
-    .meter>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#22c55e,#facc15,#f97316,#ef4444)}
-    .telemetry{min-width:0}
-    .hidden-el{display:none!important}
-    @media (max-width:720px){
-      .main-title{font-size:8px}
-      .panel-title{font-size:8px}
-      .micro{font-size:7px}
-      .nano{font-size:7px}
-    }
-  </style>
-</head>
-<body>
-<div id="app" class="h-screen w-screen overflow-hidden flex flex-row p-2 gap-3 bg-[#0A0F1C]">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VirtuaLab Pro — Advanced Chemistry Simulator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+<script>
+tailwind.config = { theme: { extend: { fontFamily: { mono: ['ui-monospace','SFMono-Regular','Menlo','Consolas','monospace'] } } } }
+</script>
+<style>
+  html,body{height:100%;margin:0;padding:0;overflow:hidden;}
+  body{ background:#020617; }
 
-  <!-- LEFT COLUMN -->
-  <section class="w-1/2 h-full min-w-0 flex flex-col gap-2">
-    <div class="panel rounded-xl overflow-hidden h-[25%] min-h-[175px] relative grid-bg">
-      <canvas id="labCanvas" class="absolute inset-0 w-full h-full"></canvas>
-      <div class="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
-        <div class="flex items-center gap-1.5">
-          <span class="nano text-amber-300"><i class="fa-solid fa-temperature-half mr-1"></i><b id="topTemp">25.0</b> °C</span>
-          <span class="chip active">AMBIENT</span>
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:3px;}
+  ::-webkit-scrollbar-thumb:hover{background:#334155;}
+
+  .custom-scrollbar::-webkit-scrollbar{width:5px;height:5px;}
+  .custom-scrollbar::-webkit-scrollbar-track{background:transparent;}
+  .custom-scrollbar::-webkit-scrollbar-thumb{background:#1e293b;border-radius:3px;}
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover{background:#334155;}
+
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;height:5px;border-radius:3px;
+    background:linear-gradient(90deg,#0891b2,#1e293b);outline:none;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+    background:#22d3ee;cursor:pointer;box-shadow:0 0 8px rgba(34,211,238,.7);
+    border:1px solid #0e7490;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px;height:13px;border-radius:50%;background:#22d3ee;border:1px solid #0e7490;cursor:pointer;
+  }
+  input[type=range].flame{background:linear-gradient(90deg,#1e293b,#f59e0b,#ef4444);}
+  input[type=range].flame::-webkit-slider-thumb{background:#fb923c;box-shadow:0 0 8px rgba(251,146,60,.85);}
+  input[type=range].stir{background:linear-gradient(90deg,#1e293b,#22d3ee,#a78bfa);}
+  input[type=range].stir::-webkit-slider-thumb{background:#a78bfa;box-shadow:0 0 8px rgba(167,139,250,.85);}
+  input[type=range].drip{background:linear-gradient(90deg,#1e293b,#34d399,#06b6d4);}
+  input[type=range].drip::-webkit-slider-thumb{background:#34d399;box-shadow:0 0 8px rgba(52,211,153,.85);}
+  input[type=range].phslider{background:linear-gradient(90deg,#dc2626 0%,#ea580c 14%,#facc15 28%,#84cc16 43%,#22c55e 50%,#14b8a6 60%,#3b82f6 72%,#6366f1 85%,#7e22ce 100%);}
+  input[type=range].phslider::-webkit-slider-thumb{background:#fff;box-shadow:0 0 8px #fff;}
+  input[type=range].phslider::-moz-range-thumb{background:#fff;}
+
+  .vl-add{
+    font-size:9px;font-weight:800;letter-spacing:.04em;padding:3px 8px;border-radius:5px;
+    background:linear-gradient(180deg,#0e7490,#155e75);color:#a5f3fc;border:1px solid #164e63;
+    transition:.15s;cursor:pointer;line-height:1.4;white-space:nowrap;
+  }
+  .vl-add:hover{background:linear-gradient(180deg,#0891b2,#0e7490);color:#ecfeff;box-shadow:0 0 10px rgba(34,211,238,.55);}
+  .vl-add:active{transform:scale(.94);}
+
+  .cat-tab{
+    font-size:9px;font-weight:600;padding:2px 8px;border-radius:5px;cursor:pointer;
+    background:#131c2b;color:#7c8ba1;border:1px solid #1e293b;transition:.15s;white-space:nowrap;flex-shrink:0;
+  }
+  .cat-tab:hover{color:#a5f3fc;border-color:#164e63;}
+  .cat-tab.active{background:linear-gradient(180deg,#0e7490,#155e75);color:#ecfeff;border-color:#22d3ee;box-shadow:0 0 8px rgba(34,211,238,.4);}
+
+  .dock-btn{
+    font-size:9.5px;font-weight:700;letter-spacing:.03em;padding:6px 9px;border-radius:6px;
+    border:1px solid #1e293b;background:#131c2b;color:#94a3b8;cursor:pointer;transition:.15s;
+  }
+  .dock-btn:hover{color:#67e8f9;border-color:#164e63;background:#16202f;}
+  .dock-btn.warn:hover{color:#fca5a5;border-color:#7f1d1d;}
+  .dock-btn.go:hover{color:#6ee7b7;border-color:#065f46;}
+  .dock-btn.danger{ border-color:#7f1d1d; color:#fca5a5; }
+  .dock-btn.danger:hover{ background:#7f1d1d; color:#fee2e2; border-color:#991b1b; }
+  .dock-btn.pulse{ border-color:#4338ca; color:#a5b4fc; }
+  .dock-btn.pulse:hover{ background:#312e81; color:#e0e7ff; border-color:#6366f1; }
+
+  .log-line{ font-size:9.5px; line-height:1.45; padding:1.5px 0; border-bottom:1px dashed #16202f; }
+
+  .reagent-row{
+    display:flex; align-items:center; gap:6px;
+    padding:4px 8px;
+    background:#0f172a; border:1px solid #1e293b; border-radius:6px; transition:.15s;
+  }
+  .reagent-row:hover{ background:#172033; border-color:#334155; }
+  .reagent-row input[type=number]::-webkit-outer-spin-button,
+  .reagent-row input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .reagent-row input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
+
+  @keyframes pulseWarn{0%,100%{opacity:1}50%{opacity:.35}}
+  .hazard-blink{animation:pulseWarn 1s infinite;}
+  .fade-in{animation:fi .35s ease-out;}
+  @keyframes fi{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes modalIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+  .modal-in{animation:modalIn .22s ease-out;}
+  @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+  .slide-in{animation:slideIn .25s ease-out;}
+  @keyframes panelIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+  .panel-in{animation:panelIn .22s ease-out;}
+
+  .hazard-icon{ display:inline-block; filter:drop-shadow(0 0 14px rgba(255,80,40,.9)); }
+
+  .metric-card{
+    background:#0f172a; border:1px solid #1e293b; border-radius:7px; padding:5px 7px;
+    display:flex; flex-direction:column; gap:1px;
+  }
+  .metric-lbl{ font-size:7px; font-weight:700; letter-spacing:.06em; color:#64748b; }
+  .metric-val{ font-size:13px; font-family:ui-monospace, monospace; line-height:1.1; }
+  .metric-unit{ font-size:6.5px; color:#475569; font-family:ui-monospace, monospace; }
+
+  .eq-item{
+    font-size:9px; font-family:ui-monospace, monospace;
+    background:#0f172a; border:1px solid #1e293b; border-radius:6px;
+    padding:4px 7px; line-height:1.4;
+  }
+  .eq-type{
+    font-size:6.5px; padding:1px 5px; border-radius:3px; font-weight:800; letter-spacing:.06em;
+    display:inline-block;
+  }
+
+  .species-chip{
+    font-size:9px; font-family:ui-monospace, monospace;
+    padding:2px 6px; border-radius:4px;
+    background:#0f172a; border:1px solid #1e293b;
+    display:inline-flex; align-items:center; gap:3px;
+  }
+  .species-chip.aqueous{ border-color:#0891b2; color:#67e8f9; }
+  .species-chip.solid{ border-color:#78716c; color:#d6d3d1; }
+  .species-chip.liquid{ border-color:#3b82f6; color:#93c5fd; }
+  .species-chip.gas{ border-color:#10b981; color:#6ee7b7; }
+  .species-chip.precip{ border-color:#a16207; color:#fcd34d; }
+</style>
+</head>
+<body class="text-slate-200 font-sans">
+
+<!-- ═══════════════════ STRICT 2-COLUMN SPLIT ═══════════════════ -->
+<div class="flex flex-row w-full h-screen max-h-screen overflow-hidden p-2 gap-3 bg-slate-950">
+
+  <!-- ══════════════ LEFT COLUMN (50%) ══════════════ -->
+  <div class="w-1/2 flex flex-col gap-2 h-full min-h-0">
+
+    <!-- ── BEAKER CANVAS ── -->
+    <div class="h-[260px] max-h-[260px] flex-none relative bg-slate-900 rounded-xl overflow-hidden border border-slate-800">
+      <canvas id="stage" class="absolute inset-0 w-full h-full block"></canvas>
+
+      <div class="absolute top-2 left-2 right-2 flex items-center gap-1.5 pointer-events-none">
+        <div class="flex items-baseline gap-1 bg-slate-950/80 border border-slate-800 rounded-md px-1.5 py-0.5 backdrop-blur-sm">
+          <i class="fa-solid fa-temperature-half text-orange-400 text-[10px]"></i>
+          <span id="tempC" class="text-[12px] font-bold font-mono text-orange-300 leading-none tabular-nums">25.0</span>
+          <span class="text-[8px] text-slate-500">°C</span>
         </div>
-        <div class="nano text-slate-500">VIRTUA<span class="text-cyan-400">LAB</span> / VFX-01</div>
+        <div id="thermalState" class="text-[8px] font-bold tracking-wider px-2 py-1 rounded-full border border-cyan-800 bg-cyan-950/70 text-cyan-300 backdrop-blur-sm">AMBIENT</div>
+        <div class="flex-1"></div>
+        <div class="flex items-center gap-1.5 text-[8px] font-mono text-slate-400 bg-slate-950/80 border border-slate-800 rounded-md px-1.5 py-0.5 backdrop-blur-sm">
+          <span><i class="fa-solid fa-fire-flame-simple text-orange-500 mr-0.5"></i><span id="hudFlame">0%</span></span>
+          <span><i class="fa-solid fa-arrows-spin text-violet-400 mr-0.5"></i><span id="hudStir">0</span></span>
+          <span><i class="fa-solid fa-droplet text-emerald-400 mr-0.5"></i><span id="hudDrip">0</span></span>
+        </div>
       </div>
+
       <div class="absolute bottom-2 left-2 right-2 pointer-events-none">
-        <div class="flex items-center gap-2">
-          <span class="nano text-slate-400">pH</span>
-          <b id="phValue" class="font-mono text-[11px] text-cyan-300">7.00</b>
-          <div class="h-[5px] flex-1 rounded-full bg-gradient-to-r from-red-500 via-yellow-300 via-green-400 to-blue-500"></div>
-          <span id="phLabel" class="nano text-emerald-300">NEUTRAL</span>
+        <div class="bg-slate-950/85 border border-slate-800 rounded-md px-2 py-1 backdrop-blur-sm">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[8px] font-bold tracking-widest text-slate-500">pH</span>
+            <span id="phValue" class="text-[14px] font-bold font-mono text-emerald-300 leading-none tabular-nums">7.00</span>
+            <div class="flex-1 h-[7px] rounded-full overflow-hidden border border-slate-700 relative"
+                 style="background:linear-gradient(90deg,#dc2626 0%,#ea580c 14%,#facc15 28%,#84cc16 43%,#22c55e 50%,#14b8a6 60%,#3b82f6 72%,#6366f1 85%,#7e22ce 100%)">
+              <div id="phMarker" class="absolute top-[-3px] w-[3px] h-[13px] bg-white rounded-full shadow-[0_0_8px_#fff] transition-all duration-150" style="left:50%"></div>
+            </div>
+            <span id="phLabel" class="text-[8px] font-bold tracking-wider text-emerald-400">NEUTRAL</span>
+          </div>
         </div>
+      </div>
+
+      <div id="hazard" class="hidden absolute inset-0 z-30 bg-red-950/85 backdrop-blur-sm flex flex-col items-center justify-center gap-2 px-3 text-center">
+        <i class="fa-solid fa-triangle-exclamation text-3xl text-red-400 hazard-blink"></i>
+        <div class="text-[14px] font-black tracking-wider text-red-200">CONTAINMENT BREACH</div>
+        <div id="hazardMsg" class="text-[9.5px] text-red-300/90 font-mono"></div>
+        <button onclick="emergencyFlush()" class="mt-1 px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-500 text-white font-bold text-[9.5px] tracking-wider shadow-lg shadow-red-900/50 transition">
+          <i class="fa-solid fa-broom mr-1"></i>EMERGENCY FLUSH
+        </button>
       </div>
     </div>
 
-    <div class="panel rounded-xl h-[13%] min-h-[92px] p-2">
-      <div class="flex items-center justify-between">
-        <div class="panel-title"><i class="fa-solid fa-wave-square mr-1"></i> Live Reaction State</div>
-        <button id="divideVesselBtn" class="nano text-slate-500 hover:text-cyan-300">DIV VESSEL</button>
+    <!-- ── LIVE REACTION & PHYSICAL STATE BANNER ── -->
+    <div id="liveBanner" class="flex-none bg-slate-900 border border-indigo-500/40 rounded-xl p-3 shadow-lg">
+      <div class="flex items-center gap-2 mb-2">
+        <i class="fa-solid fa-satellite-dish text-indigo-400 text-[10px]"></i>
+        <div class="text-[10.5px] font-bold tracking-wide text-slate-100">LIVE REACTION STATE</div>
+        <div class="flex-1"></div>
+        <div id="bannerPhase" class="text-[8px] font-bold tracking-wider px-2 py-0.5 rounded-full border border-slate-700 bg-slate-950/60 text-slate-400">DRY VESSEL</div>
       </div>
-      <div class="grid grid-cols-3 gap-2 mt-2 h-[calc(100%-22px)]">
-        <div class="min-w-0">
-          <div class="nano text-slate-500 mb-1">● VESSEL SPECIES</div>
-          <div id="speciesReadout" class="nano text-slate-300 truncate">empty vessel</div>
+
+      <div class="grid grid-cols-12 gap-2">
+        <!-- Species column -->
+        <div class="col-span-5">
+          <div class="text-[7.5px] font-bold tracking-widest text-slate-500 mb-1">
+            <i class="fa-solid fa-atom mr-1 text-cyan-500"></i>VESSEL SPECIES
+          </div>
+          <div id="bannerSpecies" class="flex flex-wrap gap-1 max-h-[70px] overflow-y-auto custom-scrollbar pr-1">
+            <span class="text-[8.5px] text-slate-600 font-mono italic">empty vessel</span>
+          </div>
         </div>
-        <div class="min-w-0">
-          <div class="nano text-amber-400 mb-1">● ACTIVE EQUATION</div>
-          <div id="equationReadout" class="nano text-slate-500 italic truncate">no reaction in progress</div>
+
+        <!-- Equation column -->
+        <div class="col-span-4">
+          <div class="text-[7.5px] font-bold tracking-widest text-slate-500 mb-1">
+            <i class="fa-solid fa-scale-balanced mr-1 text-amber-500"></i>ACTIVE EQUATION
+          </div>
+          <div id="bannerEquation" class="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1.5 min-h-[48px] flex items-center">
+            <div class="text-[9px] font-mono text-slate-500 italic">no reaction in progress</div>
+          </div>
         </div>
-        <div class="min-w-0 rounded-lg bg-[#08111f] border border-slate-800/70 px-2 py-1">
-          <div class="nano text-emerald-400">● pH / STATUS</div>
-          <div class="flex items-end gap-1">
-            <b id="statePh" class="font-mono text-lg text-emerald-300 leading-none">7.00</b>
-            <span id="stateStatus" class="nano text-slate-500">DRY VESSEL</span>
+
+        <!-- pH column -->
+        <div class="col-span-3">
+          <div class="text-[7.5px] font-bold tracking-widest text-slate-500 mb-1">
+            <i class="fa-solid fa-droplet mr-1 text-emerald-500"></i>pH / STATUS
+          </div>
+          <div class="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1.5 flex flex-col justify-center h-[48px]">
+            <div class="flex items-baseline gap-1">
+              <span id="bannerPH" class="text-[16px] font-bold font-mono text-emerald-300 leading-none tabular-nums">7.00</span>
+              <span class="text-[8px] text-slate-600">±0.01</span>
+            </div>
+            <div id="bannerStatus" class="text-[8.5px] font-bold tracking-wider text-emerald-400 mt-0.5">NEUTRAL</div>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="panel rounded-xl flex-1 min-h-0 overflow-hidden flex flex-col">
-      <div class="px-2 py-2 flex items-center justify-between border-b border-slate-800/70">
-        <div class="panel-title text-emerald-300"><i class="fa-solid fa-terminal mr-1"></i> Reaction Log</div>
-        <div class="flex items-center gap-2">
-          <button id="tutorBtn" class="nano rounded px-2 py-0.5 bg-cyan-950/70 text-cyan-300 border border-cyan-800/50">TUTOR</button>
-          <button id="clearLogBtn" class="nano text-slate-600 hover:text-slate-300">clear</button>
+    <!-- ── LOG TERMINAL ── -->
+    <div class="flex-1 min-h-0 bg-slate-900/90 rounded-xl flex flex-col overflow-hidden border border-slate-800">
+      <div class="px-3 py-1.5 border-b border-slate-800 shrink-0 flex items-center gap-2">
+        <i class="fa-solid fa-terminal text-emerald-500 text-[10px]"></i>
+        <div class="text-[11px] font-bold tracking-wide text-slate-100">REACTION LOG</div>
+        <div class="flex-1"></div>
+        <div class="text-[8px] font-mono text-slate-500" id="logCount">0</div>
+        <button onclick="toggleTutor()" class="ml-1 text-[8.5px] font-bold px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-800 text-cyan-300 hover:bg-cyan-900/70 transition">
+          <i class="fa-solid fa-graduation-cap mr-0.5"></i>TUTOR
+        </button>
+        <button onclick="clearLog()" class="text-[8px] text-slate-600 hover:text-slate-300 font-mono ml-1">clear</button>
+      </div>
+      <div id="log" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-2.5 py-1 font-mono"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════ RIGHT COLUMN (50%) ══════════════ -->
+  <div class="w-1/2 flex flex-col gap-2 h-full min-h-0 relative">
+
+    <!-- ── OPEN LIBRARY BUTTON ── -->
+    <button id="btnOpenLibrary" class="flex-none w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between transition active:scale-[.99]">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-white/15 grid place-items-center backdrop-blur-sm border border-white/25">
+          <i class="fa-solid fa-plus text-white text-[16px]"></i>
+        </div>
+        <div class="text-left">
+          <div class="text-[13px] font-bold tracking-wide leading-tight">OPEN REAGENT &amp; ELEMENT LIBRARY</div>
+          <div class="text-[9px] font-mono text-blue-100/80 leading-tight" id="libraryCountLbl">Loading…</div>
         </div>
       </div>
-      <div id="log" class="flex-1 overflow-auto scrollbar bg-[#050811] p-2 font-mono nano text-slate-400"></div>
-    </div>
-  </section>
-
-  <!-- RIGHT COLUMN -->
-  <section id="rightColumn" class="w-1/2 h-full min-w-0 relative flex flex-col gap-2">
-    <button id="openLibraryBtn" class="panel rounded-xl h-[8%] min-h-[50px] shrink-0 violet-btn flex items-center gap-3 px-3 text-left">
-      <span class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white"><i class="fa-solid fa-plus"></i></span>
-      <span class="flex-1 min-w-0">
-        <span class="block text-[10px] font-bold tracking-wide">OPEN REAGENT &amp; ELEMENT LIBRARY</span>
-        <span id="speciesCount" class="block nano text-indigo-200/80 mt-0.5">198 species · 17 categories</span>
-      </span>
-      <i class="fa-solid fa-arrow-right text-white/80"></i>
+      <i class="fa-solid fa-arrow-right text-white/70"></i>
     </button>
 
-    <div class="panel rounded-xl h-[23%] min-h-[184px] shrink-0 p-2 overflow-hidden">
-      <div class="flex items-center justify-between mb-2">
-        <div class="panel-title"><i class="fa-solid fa-sliders mr-1"></i> Apparatus Controls</div>
-        <span id="heaterState" class="nano text-slate-600">OFF</span>
+    <!-- ── APPARATUS CONTROLS ── -->
+    <div class="flex-none bg-slate-900/90 rounded-xl p-3 border border-slate-800">
+      <div class="flex items-center gap-2 mb-2.5">
+        <i class="fa-solid fa-sliders text-cyan-400 text-[10px]"></i>
+        <div class="text-[11px] font-bold tracking-wide text-slate-100">APPARATUS CONTROLS</div>
+        <div class="flex-1"></div>
+        <div class="text-[8px] font-mono text-slate-500"><span id="fps">60</span> fps</div>
       </div>
 
-      <div class="grid grid-cols-2 gap-x-3 gap-y-2">
-        <label class="min-w-0">
-          <div class="flex justify-between nano mb-1"><span class="text-cyan-300">◉ BUNSEN</span><span id="flameVal" class="text-slate-400">0%</span></div>
-          <input id="flameSlider" class="range" type="range" min="0" max="100" value="0">
-        </label>
-        <label class="min-w-0">
-          <div class="flex justify-between nano mb-1"><span class="text-orange-300">◉ TEMP</span><span id="tempVal" class="text-slate-400">25.0 °C</span></div>
-          <div class="meter"><i id="tempMeter" style="width:0%"></i></div>
-        </label>
-        <label class="min-w-0">
-          <div class="flex justify-between nano mb-1"><span class="text-violet-300">◉ STIRRER</span><span id="rpmVal" class="text-slate-400">0 rpm</span></div>
-          <input id="rpmSlider" class="range" type="range" min="0" max="1200" value="0">
-        </label>
-        <label class="min-w-0">
-          <div class="flex justify-between nano mb-1"><span class="text-emerald-300">◉ VALVE</span><span id="flowVal" class="text-slate-400">0.0 d/s</span></div>
-          <input id="flowSlider" class="range" type="range" min="0" max="20" step="0.1" value="0">
-        </label>
-      </div>
-
-      <div class="grid grid-cols-[1fr_70px_48px] gap-2 mt-2 items-end">
-        <label>
-          <div class="nano text-blue-300 mb-1">◉ BURETTE</div>
-          <select id="reagentSelect" class="select rounded px-2 h-7 w-full text-[9px]"></select>
-        </label>
-        <label>
-          <div class="nano text-slate-500 mb-1">DOSE</div>
-          <input id="doseInput" class="field rounded px-2 h-7 w-full text-[9px]" type="number" min="0.1" step="0.1" value="50">
-        </label>
-        <button id="addDoseBtn" class="cyan-btn rounded h-7 text-[9px] font-bold">+ ADD</button>
-      </div>
-
-      <div class="grid grid-cols-4 gap-1.5 mt-2">
-        <button id="clearBtn" class="btn danger-btn rounded h-7 text-[9px]"><i class="fa-solid fa-trash mr-1"></i>CLEAR</button>
-        <button id="refillBtn" class="btn rounded h-7 text-[9px]"><i class="fa-solid fa-rotate mr-1"></i>REFILL</button>
-        <button id="stirBtn" class="btn rounded h-7 text-[9px]"><i class="fa-solid fa-arrows-spin mr-1"></i>STIR</button>
-        <button id="flushBtn" class="btn rounded h-7 text-[9px]"><i class="fa-solid fa-droplet mr-1"></i>FLUSH</button>
-      </div>
-      <button id="soundBtn" class="mt-2 w-full rounded h-6 bg-[#0b1322] border border-slate-800 nano text-slate-400 hover:text-cyan-300"><i class="fa-solid fa-volume-high mr-1"></i> SOUND: ON</button>
-    </div>
-
-    <div class="panel rounded-xl flex-1 min-h-0 p-2 overflow-hidden telemetry">
-      <div class="panel-title mb-2"><i class="fa-solid fa-chart-line mr-1"></i> Thermodynamic &amp; Analytical Telemetry</div>
-      <div class="grid grid-cols-3 gap-1.5">
-        <div class="rounded bg-[#0a1323] border border-slate-800/80 p-1.5"><div class="nano text-slate-500">MASS</div><b id="massOut" class="font-mono text-[11px] text-slate-300">0.0</b><span class="nano text-slate-600 ml-1">g</span></div>
-        <div class="rounded bg-[#0a1323] border border-slate-800/80 p-1.5"><div class="nano text-slate-500">VOLUME</div><b id="volumeOut" class="font-mono text-[11px] text-slate-300">0.0</b><span class="nano text-slate-600 ml-1">mL</span></div>
-        <div class="rounded bg-[#0a1323] border border-slate-800/80 p-1.5"><div class="nano text-slate-500">M / ACTIVE</div><b id="molarityOut" class="font-mono text-[11px] text-slate-300">0.000</b><span class="nano text-slate-600 ml-1">M</span></div>
-        <div class="rounded bg-[#0a1323] border border-slate-800/80 p-1.5"><div class="nano text-slate-500">n(H⁺)</div><b id="hOut" class="font-mono text-[11px] text-emerald-300">0.0</b><span class="nano text-slate-600 ml-1">mol</span></div>
-        <div class="rounded bg-[#0a1323] border border-slate-800/80 p-1.5"><div class="nano text-slate-500">n<sub>active</sub></div><b id="activeMolOut" class="font-mono text-[11px] text-emerald-300">0.000</b><span class="nano text-slate-600 ml-1">mol</span></div>
-        <div class="rounded bg-[#0a1323] border border-slate-800/80 p-1.5"><div class="nano text-slate-500">ΔT</div><b id="deltaTOut" class="font-mono text-[11px] text-orange-300">0.0</b><span class="nano text-slate-600 ml-1">K</span></div>
-      </div>
-
-      <div class="mt-2 rounded bg-[#080f1c] border border-slate-800/80 p-1.5">
-        <div class="flex justify-between nano"><span class="text-rose-300">♨ ENTHALPY</span><b id="enthalpyOut" class="text-rose-300">+0.00 kJ</b></div>
-        <div class="meter mt-1"><i id="enthalpyMeter" style="width:0%"></i></div>
-      </div>
-
-      <div class="mt-2 rounded bg-[#080f1c] border border-slate-800/80 p-1.5 min-h-[54px]">
-        <div class="nano text-cyan-300 mb-1"><i class="fa-solid fa-flask mr-1"></i> ACTIVE IONIC SPECIES · M = n/V</div>
-        <div id="ionicOut" class="nano text-slate-500">No solutes in vessel.</div>
-      </div>
-
-      <div class="mt-2 rounded bg-[#080f1c] border border-slate-800/80 p-1.5 min-h-[54px]">
-        <div class="nano text-amber-300 mb-1"><i class="fa-solid fa-scale-balanced mr-1"></i> BALANCED STOICHIOMETRIC EQUATIONS</div>
-        <div id="equationPanel" class="nano text-slate-500">Waiting for a compatible reagent set.</div>
-      </div>
-
-      <div class="mt-2 rounded bg-[#080f1c] border border-slate-800/80 p-1.5">
-        <div class="flex justify-between nano"><span class="text-slate-500">BOILING POINT</span><span id="bpOut" class="text-slate-300">100.0 °C</span></div>
-        <div class="flex justify-between nano mt-1"><span class="text-slate-500">DENSITY</span><span id="densityOut" class="text-slate-300">1.000 g/mL</span></div>
-        <div class="flex justify-between nano mt-1"><span class="text-slate-500">STIR ENERGY</span><span id="stirEnergyOut" class="text-slate-300">0.00 kJ</span></div>
-      </div>
-    </div>
-
-    <!-- RIGHT-COLUMN-ONLY MODAL -->
-    <div id="libraryModal" class="hidden-el absolute inset-0 z-50 rounded-xl bg-[#080d18]/98 border border-indigo-500/60 shadow-2xl overflow-hidden flex flex-col">
-      <div class="px-3 py-2 border-b border-slate-700/70 flex items-center gap-2 shrink-0">
-        <div class="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300"><i class="fa-solid fa-flask"></i></div>
-        <div class="flex-1">
-          <div class="text-[10px] font-bold tracking-wide">REAGENT &amp; ELEMENT LIBRARY</div>
-          <div class="nano text-slate-500"><span id="modalSpeciesCount">198</span> species</div>
+      <div class="grid grid-cols-2 gap-2.5 mb-2.5">
+        <div>
+          <div class="flex justify-between items-center mb-0.5">
+            <label class="text-[8.5px] font-bold tracking-widest text-emerald-400"><i class="fa-solid fa-flask-vial mr-0.5"></i>pH REF</label>
+            <span id="phSliderLbl" class="text-[9.5px] font-mono text-emerald-300 tabular-nums">7.00</span>
+          </div>
+          <input id="phSlider" type="range" class="phslider w-full" min="0" max="14" step="0.01" value="7">
         </div>
-        <button id="closeLibraryBtn" class="rounded bg-rose-950/60 border border-rose-800/60 text-rose-300 px-3 h-7 text-[9px]">× CLOSE</button>
-      </div>
-      <div id="categoryBar" class="px-2 py-2 flex gap-1 flex-wrap border-b border-slate-800/70 shrink-0"></div>
-      <div class="px-2 py-1.5 shrink-0">
-        <div class="relative">
-          <i class="fa-solid fa-search absolute left-2 top-2 text-slate-600 text-[9px]"></i>
-          <input id="librarySearch" class="field w-full rounded h-7 pl-6 pr-2 text-[9px]" placeholder="Search species, formula, category...">
+        <div>
+          <div class="flex justify-between items-center mb-0.5">
+            <label class="text-[8.5px] font-bold tracking-widest text-orange-400"><i class="fa-solid fa-fire mr-0.5"></i>BUNSEN</label>
+            <span id="flameLbl" class="text-[9.5px] font-mono text-orange-300 tabular-nums">0 °C</span>
+          </div>
+          <input id="flameSlider" type="range" class="flame w-full" min="0" max="100" step="1" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between items-center mb-0.5">
+            <label class="text-[8.5px] font-bold tracking-widest text-violet-400"><i class="fa-solid fa-arrows-spin mr-0.5"></i>STIRRER</label>
+            <span id="stirLbl" class="text-[9.5px] font-mono text-violet-300 tabular-nums">0 rpm</span>
+          </div>
+          <input id="stirSlider" type="range" class="stir w-full" min="0" max="100" step="1" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between items-center mb-0.5">
+            <label class="text-[8.5px] font-bold tracking-widest text-emerald-400"><i class="fa-solid fa-droplet mr-0.5"></i>VALVE</label>
+            <span id="dripLbl" class="text-[9.5px] font-mono text-emerald-300 tabular-nums">0.0 d/s</span>
+          </div>
+          <input id="dripSlider" type="range" class="drip w-full" min="0" max="20" step="0.5" value="0">
         </div>
       </div>
-      <div id="libraryList" class="flex-1 overflow-y-auto scrollbar px-2 pb-2 space-y-1"></div>
+
+      <div class="grid grid-cols-2 gap-2.5 mb-2.5">
+        <div>
+          <label class="text-[8.5px] font-bold tracking-widest text-cyan-400 block mb-0.5"><i class="fa-solid fa-vial mr-0.5"></i>BURETTE</label>
+          <select id="buretteSel" class="w-full bg-[#131c2b] border border-slate-700 rounded-md text-[10px] px-2 py-[4px] text-slate-200 outline-none focus:border-cyan-600"></select>
+        </div>
+        <div>
+          <label class="text-[8.5px] font-bold tracking-widest text-blue-400 block mb-0.5"><i class="fa-solid fa-droplet mr-0.5"></i>WATER</label>
+          <div class="flex items-center gap-1">
+            <input id="water-vol" type="number" min="0.1" max="500" step="1" value="50"
+                   class="w-[55px] bg-[#0a111e] border border-slate-700 rounded-md text-[10px] font-mono text-blue-300 outline-none px-1.5 py-[3px] text-right focus:border-cyan-500">
+            <span class="text-[8.5px] text-slate-500 font-mono">mL</span>
+            <button id="btnWater" class="vl-add ml-auto">+ ADD</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-4 gap-1.5 mb-1.5">
+        <button id="btnClearVessel" class="dock-btn danger justify-center"><i class="fa-solid fa-trash-can mr-1"></i>CLEAR</button>
+        <button id="btnRefill" class="dock-btn go justify-center"><i class="fa-solid fa-arrows-rotate mr-1"></i>REFILL</button>
+        <button id="btnStirPulse" class="dock-btn pulse justify-center"><i class="fa-solid fa-water mr-1"></i>STIR</button>
+        <button id="btnFlush" class="dock-btn warn justify-center"><i class="fa-solid fa-broom mr-1"></i>FLUSH</button>
+      </div>
+      <button id="btnSound" class="dock-btn w-full justify-center"><i class="fa-solid fa-volume-high mr-1"></i><span id="soundLbl">SOUND: ON</span></button>
     </div>
-  </section>
+
+    <!-- ── TELEMETRY ── -->
+    <div class="flex-1 min-h-0 bg-slate-900/90 rounded-xl flex flex-col overflow-hidden border border-slate-800">
+      <div class="px-3 py-1.5 border-b border-slate-800 shrink-0 flex items-center gap-2">
+        <i class="fa-solid fa-square-root-variable text-cyan-400 text-[10px]"></i>
+        <div class="text-[11px] font-bold tracking-wide text-slate-100">THERMODYNAMIC &amp; ANALYTICAL TELEMETRY</div>
+        <div class="flex-1"></div>
+        <div class="text-[7.5px] font-mono text-slate-500 hidden xl:block">q=mcΔT · V<sub>STP</sub>=n×22.4 · M=n/V</div>
+      </div>
+
+      <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2.5 space-y-2">
+        <div class="grid grid-cols-4 gap-1.5">
+          <div class="metric-card"><div class="metric-lbl">MASS</div><div class="metric-val text-cyan-300" id="mMass">0.0</div><div class="metric-unit">g</div></div>
+          <div class="metric-card"><div class="metric-lbl">VOLUME</div><div class="metric-val text-blue-300" id="mVol">0.0</div><div class="metric-unit">mL</div></div>
+          <div class="metric-card"><div class="metric-lbl">M = n/V</div><div class="metric-val text-violet-300" id="mMol">0.000</div><div class="metric-unit">mol·L⁻¹</div></div>
+          <div class="metric-card"><div class="metric-lbl">ΔH<sub>rxn</sub></div><div class="metric-val text-rose-300" id="mDH">0.0</div><div class="metric-unit">kJ·mol⁻¹</div></div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-1.5">
+          <div class="metric-card"><div class="metric-lbl">q = mcΔT</div><div class="metric-val text-amber-300" id="mQ">0.0</div><div class="metric-unit">J</div></div>
+          <div class="metric-card"><div class="metric-lbl">V<sub>STP</sub></div><div class="metric-val text-emerald-300" id="mVstp">0.00</div><div class="metric-unit">L · 22.4/mol</div></div>
+          <div class="metric-card"><div class="metric-lbl">Σ n<sub>gas</sub></div><div class="metric-val text-teal-300" id="mNgas">0.000</div><div class="metric-unit">mol</div></div>
+          <div class="metric-card"><div class="metric-lbl">ΔT</div><div class="metric-val text-orange-300" id="mDT">0.0</div><div class="metric-unit">K vs 25°C</div></div>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-lg px-2.5 py-1.5 flex items-center gap-2">
+          <i class="fa-solid fa-fire-flame-curved text-rose-400 text-[10px]"></i>
+          <div class="text-[8px] font-bold tracking-widest text-slate-500">Σ ENTHALPY</div>
+          <div class="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden relative">
+            <div id="dHBar" class="absolute inset-y-0 left-1/2 bg-gradient-to-r from-rose-500 to-orange-400 transition-all" style="width:0%"></div>
+            <div class="absolute inset-y-0 left-1/2 w-px bg-slate-500"></div>
+          </div>
+          <div class="text-[10px] font-mono text-rose-300 tabular-nums min-w-[65px] text-right" id="mDHCumul">0.00 kJ</div>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-2">
+          <div class="text-[8px] font-bold tracking-widest text-slate-500 mb-1">
+            <i class="fa-solid fa-atom mr-1 text-cyan-500"></i>ACTIVE IONIC SPECIES · M = n/V
+          </div>
+          <div id="speciesList" class="flex flex-wrap gap-1">
+            <span class="text-[8.5px] text-slate-600 font-mono italic">no solutes in vessel</span>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-2">
+          <div class="text-[8px] font-bold tracking-widest text-slate-500 mb-1">
+            <i class="fa-solid fa-scale-balanced mr-1 text-amber-500"></i>BALANCED STOICHIOMETRIC EQUATIONS
+          </div>
+          <div id="eqList" class="space-y-1">
+            <div class="text-[8.5px] text-slate-600 font-mono italic">awaiting reaction…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ REAGENT MODAL (absolute inside Right Column — overlays only right side) ══════ -->
+    <div id="reagentModal" class="hidden absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-md rounded-xl p-4 flex flex-col border border-indigo-500/30 shadow-2xl panel-in">
+      <div class="flex items-center gap-3 pb-3 border-b border-slate-800 shrink-0">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 grid place-items-center shadow-lg shadow-indigo-900/50">
+          <i class="fa-solid fa-flask text-white text-[15px]"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-[14px] font-black tracking-wide text-slate-100 leading-tight">REAGENT &amp; ELEMENT LIBRARY</div>
+          <div class="text-[9px] text-slate-500 font-mono tracking-wider leading-tight" id="reagentCount">0 species</div>
+        </div>
+        <button onclick="closeReagentModal()" class="px-3 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800/80 border border-red-700/60 text-red-200 hover:text-white font-bold text-[10px] tracking-wider transition flex items-center gap-1.5">
+          <i class="fa-solid fa-xmark"></i>CLOSE
+        </button>
+      </div>
+
+      <div id="catTabs" class="py-2 flex flex-wrap gap-1 border-b border-slate-800 shrink-0"></div>
+
+      <div id="shelf" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-2.5 space-y-1"></div>
+
+      <div class="pt-2 border-t border-slate-800 shrink-0 flex items-center gap-2 text-[8.5px] text-slate-500 font-mono">
+        <i class="fa-solid fa-shield-halved text-amber-600"></i>
+        <span>Hazard interlock active · [ESC] to close</span>
+      </div>
+    </div>
+  </div>
 </div>
+
+<!-- ═══════════ AI TUTOR DRAWER ═══════════ -->
+<div id="tutorDrawer" class="fixed top-0 right-0 h-full w-[440px] max-w-[95vw] bg-slate-900 border-l-2 border-cyan-700 shadow-2xl transform translate-x-full transition-transform duration-300 z-40 flex flex-col slide-in">
+  <div class="px-4 py-3 border-b border-slate-800 flex items-center gap-2 shrink-0 bg-gradient-to-r from-cyan-950/40 to-slate-900">
+    <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-700 grid place-items-center shadow-lg shadow-cyan-900/50">
+      <i class="fa-solid fa-graduation-cap text-white text-[14px]"></i>
+    </div>
+    <div class="flex-1">
+      <div class="text-[13px] font-bold tracking-wide text-slate-100">AI LAB TUTOR</div>
+      <div class="text-[8.5px] text-slate-500 font-mono tracking-wider">REAL-TIME CHEMISTRY EXPLANATIONS</div>
+    </div>
+    <button onclick="toggleTutor()" class="w-8 h-8 rounded-md bg-slate-800 hover:bg-slate-700 grid place-items-center transition">
+      <i class="fa-solid fa-xmark text-slate-400 text-[13px]"></i>
+    </button>
+  </div>
+  <div id="tutorBody" class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3"></div>
+  <div class="px-4 py-2 border-t border-slate-800 bg-slate-950/50 text-[8.5px] text-slate-500 font-mono flex items-center gap-1.5 shrink-0">
+    <i class="fa-solid fa-circle-info"></i>
+    <span>Explanations update as reactions occur.</span>
+  </div>
+</div>
+
+<!-- ═══════════ SAFETY MODAL ═══════════ -->
+<div id="safetyModal" class="hidden fixed inset-0 z-[100] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+  <div class="max-w-lg w-full bg-gradient-to-b from-red-950 via-[#1a0707] to-[#0a0303] border-2 border-red-600 rounded-2xl shadow-2xl shadow-red-900/70 overflow-hidden modal-in">
+    <div class="bg-gradient-to-r from-red-900/80 via-red-800/60 to-red-900/80 px-5 py-3 flex items-center gap-3 border-b-2 border-red-700">
+      <i class="fa-solid fa-triangle-exclamation text-3xl text-red-300 hazard-blink"></i>
+      <div class="flex-1">
+        <div class="text-[9px] font-mono tracking-[0.2em] text-red-300/80">SAFETY INTERLOCK · ENGINE PAUSED</div>
+        <div class="text-[15px] font-black tracking-wider text-red-100 leading-tight">HAZARD DETECTED</div>
+      </div>
+      <div id="hazardLevelBadge" class="px-2.5 py-1 rounded text-[9px] font-black tracking-wider bg-red-700 text-white border border-red-500">CRITICAL</div>
+    </div>
+    <div class="p-5 space-y-4">
+      <div id="hazardIcons" class="flex justify-center gap-4 text-[44px] leading-none py-1"></div>
+      <div class="text-center">
+        <div id="hazardTitle" class="text-[18px] font-black text-red-200 tracking-wide"></div>
+        <div id="hazardDesc" class="text-[12px] text-red-300/90 mt-2 leading-relaxed font-mono"></div>
+      </div>
+      <div id="hazardDetail" class="text-[10.5px] font-mono text-red-400/90 bg-red-950/60 border border-red-900/70 rounded-lg px-3 py-2 leading-relaxed"></div>
+      <div class="bg-amber-950/40 border border-amber-800/50 rounded-lg px-3 py-2 text-[10.5px] text-amber-300/90 font-mono">
+        <i class="fa-solid fa-flask mr-1.5"></i>Pending: <span id="hazardPending" class="text-amber-100 font-bold"></span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 pt-1">
+        <button id="btnHazardAllow" class="px-4 py-3 rounded-lg bg-gradient-to-b from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 text-white font-bold text-[11px] tracking-wider border border-red-500 shadow-lg shadow-red-900/50 transition active:scale-[.97]">
+          <i class="fa-solid fa-bolt mr-1.5"></i>ALLOW &amp; EXECUTE
+        </button>
+        <button id="btnHazardCancel" class="px-4 py-3 rounded-lg bg-gradient-to-b from-slate-700 to-slate-800 hover:from-slate-600 hover:to-slate-700 text-slate-100 font-bold text-[11px] tracking-wider border border-slate-500 transition active:scale-[.97]">
+          <i class="fa-solid fa-ban mr-1.5"></i>CANCEL &amp; ABORT
+        </button>
+      </div>
+      <div class="text-center text-[9px] font-mono text-red-500/60 tracking-wider">
+        <i class="fa-solid fa-shield-halved mr-1"></i>VIRTUALAB SAFETY PROTOCOL v9.0 · ESC = ABORT · ENTER = ALLOW
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
