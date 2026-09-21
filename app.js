@@ -508,6 +508,10 @@ const sim = {
 
 let pendingAddition = null;
 
+/* ─── Hazard Alert state (non-blocking soft alerts in the Right Column) ─── */
+let hazardAlertActive = false;
+const alertCooldown = {};
+
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 let ACTIVE_CAT = 'All';
@@ -688,6 +692,17 @@ function clearLog(){
   if (lc) lc.textContent = '0';
 }
 
+/* ── Multi-stage reaction progress bar in the terminal log ── */
+function logStage(current, total, label, detail, type){
+  const cur = Math.max(0, Math.min(current, total));
+  const filled = '█'.repeat(cur);
+  const empty = '░'.repeat(Math.max(0, total - cur));
+  const pct = Math.round((cur / total) * 100);
+  const bar = `[${filled}${empty}] ${String(pct).padStart(3,' ')}%`;
+  const line = `${bar} · STAGE ${current}/${total} · ${label}${detail ? ' — ' + detail : ''}`;
+  log(line, type || 'react');
+}
+
 function eqAdd(str, type){
   const key = str + '|' + (type||'');
   if (vessel.eqHistory.has(key)) return;
@@ -720,6 +735,75 @@ function eqAdd(str, type){
   vessel.lastEquation = str;
   vessel.lastReactionType = type || 'REACTION';
   updateBanner();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HAZARD ALERT MODAL — soft, non-blocking, Right-Column-only overlay
+   ══════════════════════════════════════════════════════════════════════════ */
+function showHazardAlert(opts){
+  const modal = document.getElementById('hazardAlertModal');
+  if (!modal) return;
+
+  const severity = opts.severity || 'WARNING';
+
+  const badge = document.getElementById('alertSeverityBadge');
+  if (badge){
+    const severityClasses = {
+      WARNING:  'bg-amber-700 text-white border border-amber-500/80',
+      DANGER:   'bg-orange-700 text-white border border-orange-500/80',
+      CRITICAL: 'bg-red-700 text-white border border-red-500/80',
+    };
+    badge.textContent = severity;
+    badge.className = 'px-2 py-1 rounded text-[8.5px] font-black tracking-wider whitespace-nowrap ' +
+                      (severityClasses[severity] || severityClasses.WARNING);
+  }
+
+  const iconsEl = document.getElementById('alertIcons');
+  if (iconsEl){
+    const iconMap = {
+      '💥':'text-orange-300','🔥':'text-red-400','☣️':'text-lime-400',
+      '⚠️':'text-amber-300','⚡':'text-yellow-300','🧪':'text-cyan-300',
+      '💨':'text-slate-300','🧫':'text-emerald-300'
+    };
+    iconsEl.innerHTML = (opts.icons || ['⚠️']).map(i =>
+      `<span class="hazard-icon hazard-blink ${iconMap[i] || 'text-amber-300'}">${i}</span>`
+    ).join('');
+  }
+
+  const titleEl = document.getElementById('alertTitle');
+  if (titleEl) titleEl.textContent = opts.title || 'Hazardous reaction detected';
+
+  const descEl = document.getElementById('alertDesc');
+  if (descEl) descEl.textContent = opts.desc || '';
+
+  const detailEl = document.getElementById('alertDetail');
+  if (detailEl) detailEl.innerHTML = opts.detail || '';
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  hazardAlertActive = true;
+
+  /* Audio: only fire here for non-blast severities.
+     Blast-grade events (explosions) already played LabAudio.explode() upstream. */
+  if (opts.playAudio !== false){
+    if (severity !== 'CRITICAL') LabAudio.warn();
+  }
+}
+
+function hideHazardAlert(){
+  const modal = document.getElementById('hazardAlertModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  hazardAlertActive = false;
+}
+
+/** Raise an alert at most once per `cooldownMs` per key. */
+function raiseAlertOnce(key, cooldownMs, opts){
+  const now = performance.now();
+  if (alertCooldown[key] && (now - alertCooldown[key]) < cooldownMs) return;
+  alertCooldown[key] = now;
+  showHazardAlert(opts);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -909,9 +993,13 @@ function addChemical(chem, qty, skipHazardCheck){
   const unit = isLiquid ? 'mL' : 'g';
   log(`Added ${qty.toFixed(1)} ${unit} ${chem.n} → ${moles.toFixed(4)} mol`, 'info');
 
-  /* Alkali runaway — ONLY if liquid solvent is present */
+  /* Alkali runaway — ONLY if liquid solvent is present.
+     Multi-stage telemetry precedes the blast. */
   if (chem.alkali && hasLiquidSolvent() && moles > 0.055){
-    setTimeout(() => triggerExplosion(`${chem.n} + H₂O runaway`), 220);
+    logStage(1, 3, 'SURFACE CONTACT',  `${chem.f} contacting liquid — dissolution begins`, 'react');
+    setTimeout(() => logStage(2, 3, 'H₂ EVOLUTION',    'rapid hydrogen bubbles at interface', 'warn'), 80);
+    setTimeout(() => logStage(3, 3, 'THERMAL RUNAWAY', 'exothermic chain — ignition imminent', 'danger'), 180);
+    setTimeout(() => triggerExplosion(`${chem.n} + H₂O runaway`), 340);
   }
 
   updateBanner(); updateTutor();
@@ -946,6 +1034,19 @@ function updateThermo(dt){
   }
 
   if (v.temperature < 0) v.temperature = 0;
+
+  /* Soft alert: thermal runaway warning (fires once every 30 s) */
+  if (v.temperature > 700 && !v.shattered){
+    raiseAlertOnce('thermal-runaway', 30000, {
+      severity: 'DANGER',
+      icons: ['🔥','⚠️'],
+      title: 'THERMAL RUNAWAY DETECTED',
+      desc: `Vessel temperature reached ${v.temperature.toFixed(0)} °C — borosilicate softening range.`,
+      detail: '<div>• Cause: sustained exothermic heating of vessel contents.</div>' +
+              '<div>• Recommendation: reduce flame input to avoid catastrophic failure.</div>' +
+              '<div>• Observe for cracking, colour change, or deformation.</div>'
+    });
+  }
 
   if (v.temperature > 1200 && !v.shattered){
     triggerShatter('Thermal shock — borosilicate limit exceeded (T > 1200 °C)');
@@ -1614,6 +1715,20 @@ function triggerShatter(reason){
   log('⚠️ GLASS SHATTER — ' + reason, 'danger');
   document.getElementById('hazardMsg').textContent = reason;
   document.getElementById('hazard').classList.remove('hidden');
+
+  /* If an explosion didn't already raise an alert, raise a vessel-integrity alert now. */
+  if (!hazardAlertActive){
+    showHazardAlert({
+      severity: 'DANGER',
+      icons: ['⚠️','🔥'],
+      title: 'VESSEL INTEGRITY FAILURE',
+      desc: 'Borosilicate containment limit exceeded. Glass fractures detected.',
+      detail: `<div>• Cause: ${reason}</div>` +
+              '<div>• Vessel is compromised — no further reagent additions accepted.</div>' +
+              '<div>• Residual fumes, steam, and sediment can still be observed live.</div>',
+      playAudio: false
+    });
+  }
 }
 
 function triggerExplosion(reason){
@@ -1625,7 +1740,25 @@ function triggerExplosion(reason){
   sim.steamRate += 60;
   spawnSmoke(10);
   spawnSteam(14);
+
+  /* Multi-stage telemetry */
+  logStage(1, 3, 'IGNITION',    'localised energy release detected', 'danger');
+  setTimeout(() => logStage(2, 3, 'PROPAGATION', 'exothermic front spreading outward', 'danger'), 120);
+  setTimeout(() => logStage(3, 3, 'BLAST',       'pressure wave — vessel integrity compromised', 'danger'), 280);
+
   log('💥 EXPLOSIVE REACTION — ' + reason, 'danger');
+
+  showHazardAlert({
+    severity: 'CRITICAL',
+    icons: ['💥','🔥','⚠️'],
+    title: 'EXPLOSIVE REACTION IN PROGRESS',
+    desc: 'Rapid exothermic decomposition with pressure wave. Vessel integrity compromised.',
+    detail: `<div>• Cause: ${reason}</div>` +
+            `<div>• Peak temperature: ${vessel.temperature.toFixed(0)} °C</div>` +
+            '<div>• Recommendation: observe residual fumes &amp; sediment, then flush or continue experimentation.</div>',
+    playAudio: false  /* blast already played above */
+  });
+
   triggerShatter(reason);
 }
 
@@ -2568,8 +2701,13 @@ function updateHUD(dt){
   const pl = document.getElementById('phLabel');
   pl.textContent = phTxt; pl.className = `text-[8px] font-bold tracking-wider ${phCol}`;
 
-  const phSl = document.getElementById('phSliderLbl');
-  if (phSl) phSl.textContent = v.pH.toFixed(2);
+  /* ── Read-only pH reference slider: driven entirely by the chemistry kernel ──
+     The control is `disabled` in markup — this reflects -log₁₀[H⁺] live,
+     synced with the beaker bar and the Live Reaction State value. */
+  const phRefEl = document.getElementById('phRef');
+  if (phRefEl) phRefEl.value = v.pH.toFixed(2);
+  const phRefLblEl = document.getElementById('phRefLbl');
+  if (phRefLblEl) phRefLblEl.textContent = v.pH.toFixed(2);
 
   /* Thermodynamics */
   const V_L = Math.max(0.0005, totalLiquidVolume() / 1000);
@@ -2668,7 +2806,8 @@ function wireControls(){
   const flame = document.getElementById('flameSlider');
   const stir  = document.getElementById('stirSlider');
   const drip  = document.getElementById('dripSlider');
-  const phSl  = document.getElementById('phSlider');
+  /* NOTE: #phRef is a read-only, automated display slider — no input listener.
+     Its value is written every frame from computePH() via updateHUD(). */
 
   flame.addEventListener('input', e => {
     sim.flame = parseFloat(e.target.value);
@@ -2686,12 +2825,6 @@ function wireControls(){
     sim.drip = parseFloat(e.target.value);
     document.getElementById('dripLbl').textContent = sim.drip.toFixed(1) + ' d/s';
   });
-
-  if (phSl){
-    phSl.addEventListener('input', e => {
-      document.getElementById('phSliderLbl').textContent = parseFloat(e.target.value).toFixed(2);
-    });
-  }
 
   document.getElementById('btnOpenLibrary').onclick = openReagentModal;
 
@@ -2744,6 +2877,17 @@ function wireControls(){
     log('Audio ' + (LabAudio.enabled ? 'enabled' : 'muted'), 'info');
   };
 
+  /* ── CONTINUE & OBSERVE — dismiss hazard alert WITHOUT resetting vessel ── */
+  const btnAlertContinue = document.getElementById('btnAlertContinue');
+  if (btnAlertContinue){
+    btnAlertContinue.onclick = () => {
+      hideHazardAlert();
+      log('👁️ ALERT ACKNOWLEDGED — observation mode. Simulation continues without reset.', 'info');
+      log('   Residual fumes, steam, sediment and gas evolution remain live.', 'info');
+      LabAudio.click();
+    };
+  }
+
   document.getElementById('btnHazardAllow').onclick = () => {
     const pending = pendingAddition;
     hideHazardModal();
@@ -2751,6 +2895,13 @@ function wireControls(){
     pendingAddition = null;
     if (pending){
       log('⚠️ SAFETY OVERRIDE — hazard procedure authorized by operator.', 'danger');
+
+      /* Multi-stage telemetry for an authorized hazardous procedure */
+      logStage(1, 4, 'AUTHORIZATION', 'operator override logged', 'warn');
+      setTimeout(() => logStage(2, 4, 'EXECUTION',   'reagent introduced into vessel', 'warn'),   60);
+      setTimeout(() => logStage(3, 4, 'REACTION PEAK','exothermic front developing', 'danger'), 280);
+      setTimeout(() => logStage(4, 4, 'SETTLING',    'monitoring residual activity', 'react'),  1000);
+
       addChemical(pending.chem, pending.qty, true);
     }
   };
@@ -2768,6 +2919,10 @@ function wireControls(){
     if (vessel.paused){
       if (e.key === 'Escape'){ document.getElementById('btnHazardCancel').click(); }
       else if (e.key === 'Enter'){ document.getElementById('btnHazardAllow').click(); }
+    } else if (hazardAlertActive){
+      if (e.key === 'Escape' || e.key === 'Enter'){
+        document.getElementById('btnAlertContinue').click();
+      }
     } else if (e.key === 't' || e.key === 'T'){
       toggleTutor();
     } else if (e.key === 'Escape'){
@@ -2804,6 +2959,7 @@ function boot(){
   log('Vessel empty and dry. Add reagents from the library.', 'info');
   log('Click [OPEN REAGENT LIBRARY] to begin.', 'info');
   log('Press [T] for AI Lab Tutor · [ESC] closes panels.', 'info');
+  log('Hazard Alert system armed · multi-stage reaction telemetry active.', 'good');
 
   updateBanner();
   updateTutor();
